@@ -8,14 +8,7 @@
         "s3:GetBucketLocation",
         "s3:ListBucket"
       ],
-      "Resource": "arn:aws:s3:::ammonl-db-tf-state",
-      "Condition": {
-        "StringLike": {
-          "s3:prefix": [
-            "infra-shared-db/terraform.tfstate"
-          ]
-        }
-      }
+      "Resource": "arn:aws:s3:::ammonl-db-tf-state"
     },
     {
       "Sid": "TerraformStateObject",
@@ -44,6 +37,7 @@
       "Effect": "Allow",
       "Action": [
         "ec2:DescribeVpcs",
+        "ec2:DescribeVpcAttribute",
         "ec2:DescribeSubnets",
         "ec2:DescribeSecurityGroups",
         "ec2:DescribeSecurityGroupRules"
@@ -76,7 +70,8 @@
         "rds:DeleteDBSubnetGroup",
         "rds:DescribeDBSubnetGroups",
         "rds:DescribeDBEngineVersions",
-        "rds:DescribeOrderableDBInstanceOptions"
+        "rds:DescribeOrderableDBInstanceOptions",
+        "rds:ListTagsForResource"
       ],
       "Resource": "*"
     },
@@ -93,6 +88,7 @@
       "Effect": "Allow",
       "Action": [
         "secretsmanager:DescribeSecret",
+        "secretsmanager:GetResourcePolicy",
         "secretsmanager:GetSecretValue",
         "secretsmanager:PutSecretValue",
         "secretsmanager:UpdateSecret",
