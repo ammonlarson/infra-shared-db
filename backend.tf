@@ -1,9 +1,9 @@
 terraform {
   backend "s3" {
-    bucket         = "REPLACE_ME_STATE_BUCKET"
+    bucket         = "ammonl-db-tf-state"
     key            = "infra-shared-db/terraform.tfstate"
     region         = "eu-north-1"
-    dynamodb_table = "REPLACE_ME_LOCK_TABLE"
+    dynamodb_table = "ammonl-db-tf-locks"
     encrypt        = true
   }
 }

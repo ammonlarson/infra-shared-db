@@ -25,7 +25,7 @@ jobs:
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: REPLACE_ME_GHA_ROLE_ARN
+          role-to-assume: arn:aws:iam::266535567738:role/gha-terraform-shared-db
           aws-region: ${{ env.AWS_REGION }}
 
       - uses: hashicorp/setup-terraform@v3
@@ -54,7 +54,7 @@ jobs:
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: REPLACE_ME_GHA_ROLE_ARN
+          role-to-assume: arn:aws:iam::266535567738:role/gha-terraform-shared-db
           aws-region: ${{ env.AWS_REGION }}
 
       - uses: hashicorp/setup-terraform@v3
