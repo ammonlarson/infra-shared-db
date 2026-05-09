@@ -56,6 +56,38 @@ Shared Postgres infrastructure for low-volume projects. One RDS instance hosts m
 - `aws` CLI configured locally
 - `terraform` >= 1.6
 - `gh` CLI (optional, for repo creation)
+- A local `terraform.tfvars` containing your operator IP (see [Operator IP and `terraform.tfvars`](#operator-ip-and-terraformtfvars) below). **Required for any local `terraform plan` or `apply` that touches Postgres-level resources.**
+
+## Operator IP and `terraform.tfvars`
+
+> **Read this before your first `terraform plan` or `apply`.** Skipping it will silently propose removing your own ingress CIDR.
+
+The RDS instance is `publicly_accessible = true`, gated only by a security group whose ingress list comes from `var.allowed_ingress_cidrs`. The variable defaults to `[]` (no ingress). That default is deliberate — committing a residential IP to the tracked source would be worse — but it means **any `terraform apply` that runs without the operator's `/32` will plan to remove the existing CIDR**, locking everyone (including you) out of the database.
+
+The fix is to persist the value in a gitignored `terraform.tfvars`:
+
+```bash
+cp terraform.tfvars.example terraform.tfvars
+# edit terraform.tfvars and replace the placeholder with your /32
+terraform plan
+terraform apply
+```
+
+`terraform.tfvars` is matched by `.gitignore` (`*.tfvars`); `terraform.tfvars.example` is whitelisted (`!*.tfvars.example`) and lives in the repo as a template.
+
+When your ISP rotates your IP:
+
+1. Update `terraform.tfvars` with the new `/32`.
+2. `terraform apply` from your laptop. The plan should be a one-line `~ ingress` diff on `aws_security_group.rds`.
+
+### Why GitHub Actions can't apply Postgres-level changes
+
+CI authenticates to AWS over OIDC, but the GHA runner's egress IP isn't in your allowlist (only your operator IP is). Two consequences:
+
+- **AWS-level changes** (the RDS instance, the security group itself, master Secrets Manager entries) still apply fine from CI — they don't need to dial Postgres.
+- **Postgres-level changes** (creating or destroying a project's database, role, or per-project secret) require the `postgresql` provider to reach RDS. Those applies must run from your laptop with `terraform.tfvars` populated. See [ADDING_A_PROJECT.md](./ADDING_A_PROJECT.md) for the full new-project flow.
+
+If you want CI to handle project provisioning end-to-end, see option (B) or (C) in issue #6 — both lift this constraint, at the cost of more infra.
 
 ## One-time bootstrap
 
@@ -183,24 +215,27 @@ Edit `.github/workflows/terraform.yml` and set the `role-to-assume` value to the
 Run from your laptop. The first apply creates the RDS instance and the master secret.
 
 ```bash
+cp terraform.tfvars.example terraform.tfvars
+# edit terraform.tfvars: set allowed_ingress_cidrs to your /32
 terraform init
-terraform plan -var="allowed_ingress_cidrs=[\"$IP_ADDRESS/32\"]"
-terraform apply -var="allowed_ingress_cidrs=[\"$IP_ADDRESS/32\"]"
+terraform plan
+terraform apply
 ```
 
-Set `allowed_ingress_cidrs` to whichever IPs need direct DB access. Add the egress IP ranges of any external app hosts (e.g., Vercel) here too. Persist the value by putting it in a `terraform.tfvars` file (gitignored) or in a workspace variable.
+`terraform.tfvars` is gitignored — see [Operator IP and `terraform.tfvars`](#operator-ip-and-terraformtfvars) for the full workflow and why this matters for every subsequent apply.
 
 ## CI/CD
 
 - Every PR runs `terraform plan` and posts the diff as a comment.
 - Merging to `main` runs `terraform apply` after manual approval via the `production` GitHub environment.
 - AWS auth is OIDC-only; no access keys are stored in GitHub.
+- CI can apply AWS-level changes but **cannot** apply Postgres-level changes (new/removed project DBs, roles, per-project secrets) because the GHA runner's IP isn't in `allowed_ingress_cidrs`. Those applies run from the operator's laptop — see [ADDING_A_PROJECT.md](./ADDING_A_PROJECT.md).
 
 ## Network access caveats
 
 The `postgresql` provider needs network reachability to RDS to manage databases and roles. Two paths:
 
-- **Public RDS, restricted SG (default).** `publicly_accessible = true` with a security group locked to `var.allowed_ingress_cidrs`. The SG is the firewall.
+- **Public RDS, restricted SG (default).** `publicly_accessible = true` with a security group locked to `var.allowed_ingress_cidrs`. The SG is the firewall. Today the allowlist holds only the operator's residential `/32` (see [Operator IP and `terraform.tfvars`](#operator-ip-and-terraformtfvars)), which means Postgres-level applies have to run from the operator's laptop. AWS-level applies still run from CI.
 - **Private RDS.** Set `publicly_accessible = false` and run Postgres-level applies from inside the VPC (bastion, SSM tunnel, or self-hosted GHA runner). AWS-level applies can still run from CI.
 
 For a single-operator side-project setup, public + restricted SG is simpler and equally safe. Switch to private only if compliance requires it.
@@ -269,7 +304,8 @@ See [ADDING_A_PROJECT.md](./ADDING_A_PROJECT.md#removing-a-project).
 
 ## Troubleshooting
 
-- **`terraform plan` from CI errors connecting to Postgres.** The GHA runner's egress IP isn't in `allowed_ingress_cidrs`. Either add the GitHub-published ranges (broad) or split this repo into two root modules: AWS-level (CI-applied) and Postgres-level (locally applied).
+- **`terraform plan` from CI errors connecting to Postgres.** Expected for any PR that adds, removes, or otherwise touches a Postgres-level resource (project DB, role, or per-project secret) — the GHA runner's egress IP isn't in `allowed_ingress_cidrs`. Run `terraform apply` locally instead; see [ADDING_A_PROJECT.md](./ADDING_A_PROJECT.md). PRs that only touch AWS-level resources should plan cleanly in CI.
+- **`terraform apply` proposes removing your CIDR from `aws_security_group.rds`.** You ran without `terraform.tfvars` (or the file is missing/empty). Don't apply — populate the file first. See [Operator IP and `terraform.tfvars`](#operator-ip-and-terraformtfvars).
 - **`role already exists` on first apply.** The `postgresql` provider can race during the very first apply when both the database and role are new. Re-run `terraform apply`.
 - **`InvalidLocationConstraint` creating the state bucket.** You're in `us-east-1`; drop the `--create-bucket-configuration` flag.
 - **GHA can't assume the role.** The trust policy's `sub` condition must match `repo:<owner>/<repo>:*` exactly. Recreate the role's trust policy if the repo was renamed.
