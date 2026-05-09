@@ -1,5 +1,7 @@
 locals {
-  projects = []
+  projects = [
+    "greenspace",
+  ]
 }
 
 module "projects" {
