@@ -2,7 +2,7 @@
 
 When a new project needs a database, do this.
 
-> **Heads-up:** project provisioning uses the `postgresql` provider, which has to reach RDS over the network. Only the operator's IP is in `allowed_ingress_cidrs`, not the GHA runner's, so the CI `apply` will fail on the Postgres-level resources. **You run `terraform apply` from your laptop** for project changes. Make sure your `terraform.tfvars` is up to date before you start — see the [Operator IP](./README.md#operator-ip-and-terraformtfvars) section in `README.md`.
+> **Heads-up:** project provisioning uses the `postgresql` provider, which has to reach RDS over the network. Only the operator's IP is in `allowed_ingress_cidrs`, not the GHA runner's, so once any project exists in state, **every** CI `plan` and `apply` will fail at refresh — and from that point on **you run `terraform apply` from your laptop** for *any* change to this repo, not just project add/remove. Make sure your `terraform.tfvars` is up to date before you start — see the [Operator IP](./README.md#operator-ip-and-terraformtfvars) section in `README.md`.
 
 ## 1. Pick a name
 
@@ -54,13 +54,13 @@ Because CI can't apply the Postgres-level resources, **apply from your laptop fi
 terraform apply
 ```
 
-Then merge the PR. The CI `apply` job runs against `main` and will be a no-op for the Postgres-level resources (state already matches). The new secret appears at:
+Then merge the PR. The CI `apply` job will fail on refresh of the new `postgresql_*` resources — that's expected and harmless; state already matches because you applied locally. The new secret appears at:
 
 ```
 arn:aws:secretsmanager:<region>:<account>:secret:rds/shared/<name>
 ```
 
-If you'd rather merge first and apply after, that works too — but the `production` environment will sit waiting and the apply job will fail on the Postgres-level resources. Apply locally to clear it.
+If you'd rather merge first and apply after, that works too — the `production` environment will sit waiting and the CI apply job will fail at refresh, but once you've applied locally the state is correct.
 
 ## 5. Wire the secret into the project
 
