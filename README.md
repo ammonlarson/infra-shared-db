@@ -141,14 +141,20 @@ aws iam create-role \
 --role-name $ROLE_NAME \
 --assume-role-policy-document file:///tmp/trust-policy.json
 
+aws iam create-policy \
+--policy-name gha-terraform-shared-db-least-privilege \
+--policy-document file://policies/gha-terraform-shared-db.json
+
 aws iam attach-role-policy \
 --role-name $ROLE_NAME \
---policy-arn arn:aws:iam::aws:policy/PowerUserAccess
+--policy-arn arn:aws:iam::${ACCOUNT_ID}:policy/gha-terraform-shared-db-least-privilege
 
 echo "Role ARN: arn:aws:iam::${ACCOUNT_ID}:role/${ROLE_NAME}"
 ```
 
-`PowerUserAccess` covers everything Terraform needs here (RDS, EC2/VPC, Secrets Manager, S3, DynamoDB) without granting IAM. Tighten to a custom policy later if you want.
+The policy in `policies/gha-terraform-shared-db.json` is scoped to the actions this repo's Terraform actually performs: the state bucket, lock table, RDS instance and subnet group, the VPC security group, and Secrets Manager entries under `rds/shared/`. The state-backend and Secrets Manager statements pin the bucket, table, and account/region by ARN — edit those if you used different names in step 1.
+
+If CI later fails on a missing AWS API permission, add the specific action to the policy rather than reattaching `PowerUserAccess`.
 
 ### 4. Configure the backend
 
