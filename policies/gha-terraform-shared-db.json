@@ -8,7 +8,14 @@
         "s3:GetBucketLocation",
         "s3:ListBucket"
       ],
-      "Resource": "arn:aws:s3:::ammonl-db-tf-state"
+      "Resource": "arn:aws:s3:::ammonl-db-tf-state",
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": [
+            "infra-shared-db/terraform.tfstate"
+          ]
+        }
+      }
     },
     {
       "Sid": "TerraformStateObject",
