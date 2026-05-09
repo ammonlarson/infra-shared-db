@@ -66,12 +66,14 @@ A few resources can't be managed by Terraform itself (chicken-and-egg with the s
 Pick names and a region. These are referenced throughout this section.
 
 ```bash
-export AWS_REGION=eu-west-1
-export STATE_BUCKET=<your-unique-name>-tf-state
-export LOCK_TABLE=<your-unique-name>-tf-locks
-export GITHUB_OWNER=<your-github-user-or-org>
+export AWS_REGION=eu-north-1
+export STATE_BUCKET=ammonl-db-tf-state
+export LOCK_TABLE=ammonl-db-tf-locks
+export GITHUB_OWNER=ammonlarson
 export REPO_NAME=infra-shared-db
 export ROLE_NAME=gha-terraform-shared-db
+export ACCOUNT_ID=266535567738
+export IP_ADDRESS="$(curl -s https://checkip.amazonaws.com)"
 ```
 
 ### 2. Create the state backend
@@ -182,8 +184,8 @@ Run from your laptop. The first apply creates the RDS instance and the master se
 
 ```bash
 terraform init
-terraform plan -var='allowed_ingress_cidrs=["<your-ip>/32"]'
-terraform apply -var='allowed_ingress_cidrs=["<your-ip>/32"]'
+terraform plan -var="allowed_ingress_cidrs=[\"$IP_ADDRESS/32\"]"
+terraform apply -var="allowed_ingress_cidrs=[\"$IP_ADDRESS/32\"]"
 ```
 
 Set `allowed_ingress_cidrs` to whichever IPs need direct DB access. Add the egress IP ranges of any external app hosts (e.g., Vercel) here too. Persist the value by putting it in a `terraform.tfvars` file (gitignored) or in a workspace variable.
