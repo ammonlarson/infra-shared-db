@@ -70,7 +70,8 @@
         "rds:DeleteDBSubnetGroup",
         "rds:DescribeDBSubnetGroups",
         "rds:DescribeDBEngineVersions",
-        "rds:DescribeOrderableDBInstanceOptions"
+        "rds:DescribeOrderableDBInstanceOptions",
+        "rds:ListTagsForResource"
       ],
       "Resource": "*"
     },
