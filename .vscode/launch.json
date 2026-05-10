@@ -1,0 +1,14 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run pre-commit hook",
+      "type": "node-terminal",
+      "request": "launch",
+      "preLaunchTask": "Run pre-commit hook",
+      "command": "true",
+      "cwd": "${workspaceFolder}",
+      "internalConsoleOptions": "neverOpen"
+    }
+  ]
+}
