@@ -61,6 +61,7 @@
 | `scripts/install-hooks.sh` | new — opt-in hook activation |
 | `README.md` | new "Contribution Guidelines" section + tflint prerequisite |
 | `.agent/ticket-7-plan.md` | this file |
+| `.vscode/launch.json` | new — VS Code launch config to run `.githooks/pre-commit` from the Run/Debug panel |
 
 No `.tf` source changes — this ticket is workflow / docs only.
 
