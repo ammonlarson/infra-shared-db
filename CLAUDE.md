@@ -399,7 +399,7 @@ terraform apply -var='allowed_ingress_cidrs=["<ip>/32"]'
 
 `allowed_ingress_cidrs` defaults to `[]` (no ingress), so you must pass it on every local plan/apply that touches Postgres-level resources, or persist it in a gitignored `terraform.tfvars`. Without it, the `postgresql` provider can't reach RDS and Postgres-level applies fail.
 
-There are no tests, no build step, and no `npm` / language tooling in this repo. CI's full validation is `fmt -check` + `init` + `validate` + `plan`.
+There are no tests, no build step, and no `npm` / language tooling in this repo. CI is a lint gate only: `fmt -check` + `init` + `validate`. `terraform plan` and `apply` are operator-side — see the README's "Why GitHub Actions doesn't run `terraform apply`" section for why.
 
 ## Architecture — what requires reading multiple files
 
@@ -408,7 +408,7 @@ There are no tests, no build step, and no `npm` / language tooling in this repo.
 `providers.tf` configures both the `aws` provider and `cyrilgdn/postgresql`. The Postgres provider's connection string is derived from the RDS instance attributes that don't exist until AWS-level resources are applied. Terraform handles this implicitly via the dependency graph, but it has two consequences:
 
 1. **First apply is fragile.** The provider tries to dial RDS during plan. On a brand-new state, `terraform plan` may fail until the RDS instance exists. The README's troubleshooting section documents the `role already exists` race; re-running apply is the standard fix.
-2. **Network reachability is required wherever you run `terraform plan/apply`.** GitHub Actions runners hit RDS over the public endpoint, so the GHA egress IP range (or whatever runs `plan`) must be in `allowed_ingress_cidrs`. The same applies to your laptop. If you split this into private RDS, the Postgres-level applies must move to inside the VPC — see the "Network access caveats" section in README.md.
+2. **Network reachability is required wherever you run `terraform plan/apply`.** All `plan` and `apply` runs are operator-side (CI is lint-only) and the operator's IP must be in `allowed_ingress_cidrs`. If you split this into private RDS, the Postgres-level applies must move to inside the VPC — see the "Network access caveats" section in README.md.
 
 ### The per-project module is the only place projects exist
 
@@ -420,9 +420,9 @@ A project's identity is its name string. Renaming is a destroy-and-recreate (see
 
 `backend.tf` references an S3 bucket (`ammonl-db-tf-state`) and DynamoDB lock table (`ammonl-db-tf-locks`) in `eu-north-1`. These exist outside of Terraform's control because of the chicken-and-egg with the state backend — see README.md "One-time bootstrap" for how they were created. Don't try to manage them via this repo.
 
-### CI/CD: plan on PR, apply on merge
+### CI/CD: lint only
 
-`.github/workflows/terraform.yml` runs `plan` on every PR and `apply` on push to `main`, gated by the `production` GitHub environment for manual approval. AWS auth is GitHub OIDC against the IAM role `gha-terraform-shared-db` — no long-lived credentials. When reviewing a PR, the diff in the Actions log is authoritative; verify it matches what ADDING_A_PROJECT.md describes (only additions for new projects, only destroys for removals).
+`.github/workflows/terraform.yml` runs `fmt -check`, `init`, and `validate` on every PR and push to `main`. It does NOT run `terraform plan` or `apply` — those are operator-side because the GHA runner's IP isn't in `allowed_ingress_cidrs`. AWS auth is GitHub OIDC against the IAM role `gha-terraform-shared-db`; the role exists so `init` can read the S3 backend. When reviewing a PR, run `terraform plan` locally to get the authoritative diff, and verify it matches what ADDING_A_PROJECT.md describes (only additions for new projects, only destroys for removals).
 
 ## Conventions
 
