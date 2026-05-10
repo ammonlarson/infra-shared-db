@@ -26,12 +26,12 @@ Both forms convey the same meaning ("scope is optional"), but the bracket-around
 
 - [x] Read ticket and add labels.
 - [x] Create planning document.
-- [ ] Edit `README.md` line 102.
-- [ ] Run `terraform fmt -check -recursive` (no `.tf` changes, but verify nothing breaks).
-- [ ] Commit on branch `claude/ticket-17-task-afDfK` with conventional message.
-- [ ] Push branch and open PR.
-- [ ] Run pr-reviewer agent.
-- [ ] Address feedback / add reviewer / comment ticket / remove `agent active`.
+- [x] Edit `README.md` line 102.
+- [x] Run `terraform fmt -check -recursive` (no `.tf` changes; tool unavailable locally, CI runs the gate).
+- [x] Commit on branch `claude/ticket-17-task-afDfK` with conventional message.
+- [x] Push branch and open PR.
+- [x] Run pr-reviewer agent.
+- [x] Address feedback / add reviewer / comment ticket / remove `agent active`.
 
 ## Implementation Summary
 
