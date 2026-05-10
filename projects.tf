@@ -1,6 +1,9 @@
 locals {
+  # Projects with multiple deployment environments use a `<project>_<env>`
+  # suffix so each environment gets its own database, role, and secret.
   projects = [
-    "greenspace",
+    "greenspace_staging",
+    "greenspace_prod",
   ]
 }
 
