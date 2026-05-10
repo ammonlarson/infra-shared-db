@@ -1,0 +1,4 @@
+# Force LF line endings for hook scripts so they execute correctly on Windows
+# clones with core.autocrlf=true (CRLF on the shebang breaks bash).
+.githooks/*           text eol=lf
+scripts/*.sh          text eol=lf

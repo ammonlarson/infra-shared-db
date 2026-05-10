@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+#
+# Git pre-commit hook — runs the same Terraform quality gates as CI.
+# Activate with: ./scripts/install-hooks.sh
+# See README.md (Contribution Guidelines) for details.
+
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+step() { printf '\n→ %s\n' "$*"; }
+
+require() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    echo "❌ $1 not found in PATH."
+    echo "   $2"
+    exit 1
+  fi
+}
+
+require terraform "Install Terraform >= 1.6: https://developer.hashicorp.com/terraform/install"
+require tflint    "Install tflint: brew install tflint  (or see https://github.com/terraform-linters/tflint#installation)"
+
+# 1. Formatter — same flag set as the CI gate.
+step "terraform fmt -check -recursive"
+if ! terraform fmt -check -recursive; then
+  echo
+  echo "❌ Formatting issues. Run: terraform fmt -recursive"
+  exit 1
+fi
+
+# 2. Linter — recurses into modules/ via tflint's own --recursive.
+# Pin the config explicitly so the recommended preset applies inside modules/
+# (tflint does not walk up to the repo root when descending into subdirs).
+step "tflint --recursive"
+TFLINT_CONFIG_FILE="$REPO_ROOT/.tflint.hcl" tflint --recursive
+
+# 3. Validation — skip backend init so the hook works without AWS creds.
+step "terraform init -backend=false"
+terraform init -backend=false -input=false >/dev/null
+
+step "terraform validate"
+terraform validate
+
+echo
+echo "✅ pre-commit checks passed"
