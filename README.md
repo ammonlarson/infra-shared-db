@@ -46,6 +46,7 @@ Shared Postgres infrastructure for low-volume projects. One RDS instance hosts m
 ├── peering.tf
 ├── rds.tf
 ├── projects.tf
+├── outputs.tf
 ├── variables.tf
 ├── README.md
 └── ADDING_A_PROJECT.md
@@ -324,6 +325,13 @@ Greenspace's API Lambdas run in private subnets with no NAT, so they can't reach
 To add a third environment, add an entry to the `local.greenspace_peering` map in `peering.tf`. All four resource types use `for_each` over that map, so a one-line edit picks up everywhere.
 
 **Operator sequencing:** the data source for the peering connection fails to plan until Greenspace has applied. When the two repos move together, apply Greenspace first (which creates the peerings), then apply this repo (which configures the accepter side). This repo's PR can be reviewed and merged at any time — CI's lint gate doesn't dial AWS — but `terraform plan` and `apply` will only succeed after the Greenspace apply lands.
+
+The Greenspace operator needs the shared-RDS default VPC's ID and CIDR to populate `shared_db_vpc_id` / `shared_db_vpc_cidr` in `infra/terraform/environments/{staging,prod}/main.tf`. After this repo's first apply, both are available as Terraform outputs:
+
+```bash
+terraform output default_vpc_id
+terraform output default_vpc_cidr
+```
 
 ## Connecting from a project repo
 
