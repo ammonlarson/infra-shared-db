@@ -15,7 +15,7 @@ The shared-db Secrets Manager secret keys do **not** match the AWS-managed
 RDS rotation-Lambda format. In particular, the database name is keyed
 `database` here — not `dbname` as the AWS rotation Lambda would write. A
 consumer written against the wrong shape will deserialize successfully and
-then fail at connection time because the field it reads is `undefined`.
+then fail at connection time because the field it reads is missing.
 That trap caused a production incident in the `greenspace` consumer
 (`ammonlarson/greenspace` PRs #346 and #348). Before merging any consumer
 PR that reads one of these secrets, run the [verification step](#verifying-a-live-secret)

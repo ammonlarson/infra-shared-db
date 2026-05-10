@@ -89,7 +89,7 @@ c = json.loads(raw["SecretString"])
 DATABASE_URL = f"postgresql://{c['username']}:{c['password']}@{c['host']}:{c['port']}/{c['database']}"
 ```
 
-The exact JSON field names (`database`, `host`, `password`, `port`, `username`) are documented in [`SECRET_SCHEMA.md`](./SECRET_SCHEMA.md). Note that the database name is keyed `database` — **not** `dbname`, as the AWS-managed RDS rotation Lambda would write. A consumer that reads `dbname` will silently get `undefined` and fail at connection time.
+The exact JSON field names (`database`, `host`, `password`, `port`, `username`) are documented in [`SECRET_SCHEMA.md`](./SECRET_SCHEMA.md). Note that the database name is keyed `database` — **not** `dbname`, as the AWS-managed RDS rotation Lambda would write. A consumer that reads `dbname` will get a missing/null value (depending on the language) and fail at connection time.
 
 ## 6. Verify the live secret payload before merging
 
@@ -114,7 +114,7 @@ Expected output:
 ]
 ```
 
-Run the command separately for each environment (e.g. `rds/shared/<name>_staging` **and** `rds/shared/<name>_prod`). Staging and prod can diverge in principle, so checking one is not sufficient.
+Run the command separately for **every** environment the consumer targets. For per-environment projects (see [Per-environment projects](./README.md#per-environment-projects) in `README.md`) the environment suffix is part of the project name itself, so the secret IDs are e.g. `rds/shared/greenspace_staging` and `rds/shared/greenspace_prod` — there is no separate "base" project. Check each one. Staging and prod can diverge in principle, so checking one is not sufficient.
 
 If the printed keys do not match what the consumer reads, do **not** merge — fix the consumer to use the names in [`SECRET_SCHEMA.md`](./SECRET_SCHEMA.md) first. This step exists because skipping it caused a production incident in the `greenspace` consumer (`ammonlarson/greenspace` #346 / #348).
 
