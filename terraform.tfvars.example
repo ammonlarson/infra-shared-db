@@ -1,0 +1,14 @@
+# Copy this file to `terraform.tfvars` and fill in your operator IP.
+#
+# `terraform.tfvars` is gitignored on purpose — it contains the operator's
+# residential IP. `terraform.tfvars.example` is committed as a template.
+#
+# Why this exists: `var.allowed_ingress_cidrs` defaults to `[]`. Running
+# `terraform apply` without it (or without these values persisted) will
+# silently propose removing the operator's `/32` from the RDS security
+# group, locking the operator out of the database. Persisting the value
+# in this file removes that trap.
+#
+# Update the value here and re-apply whenever your ISP rotates the lease.
+
+allowed_ingress_cidrs = ["203.0.113.10/32"]
