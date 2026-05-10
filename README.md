@@ -142,10 +142,7 @@ terraform apply
 When your ISP rotates your IP:
 
 1. Update `terraform.tfvars` with the new `/32`.
-2. `terraform apply` from your laptop. The plan should show one
-   `aws_vpc_security_group_ingress_rule.operator["<old-cidr>"]` destroyed
-   and one `aws_vpc_security_group_ingress_rule.operator["<new-cidr>"]`
-   created — no other resources touched.
+2. `terraform apply` from your laptop. The plan should be a one-line `~ ingress` diff on `aws_security_group.rds` — only the `cidr_blocks` list changes.
 
 ### Why GitHub Actions doesn't run `terraform apply`
 
@@ -317,12 +314,12 @@ The convention is enforced by the project name itself (which becomes the databas
 
 Greenspace's API Lambdas run in private subnets with no NAT, so they can't reach the public RDS endpoint over the internet. Each Greenspace environment instead opens a same-account VPC peering connection from its VPC to the shared RDS default VPC. Greenspace owns the **requester** side of the peering (created with `auto_accept = true` and `requester.allow_remote_vpc_dns_resolution = true`); this repo owns the **accepter** side, defined in `peering.tf`:
 
-- `data "aws_vpc_peering_connection"` discovers each peering by the `Name` tag Greenspace sets (`greenspace-staging-2026-shared-db-peering`, `greenspace-prod-2026-shared-db-peering`).
+- `data "aws_vpc_peering_connection"` discovers each peering by the `Name` tag Greenspace sets (`greenspace-staging-2026-shared-db-peering`, `greenspace-prod-2026-shared-db-peering`), constrained to active peerings whose accepter VPC is the shared-RDS default VPC.
 - `aws_vpc_peering_connection_options` sets `accepter.allow_remote_vpc_dns_resolution = true` so the public RDS endpoint resolves to the RDS private IP for queries originating in the peered VPC.
 - `aws_route` adds the Greenspace VPC CIDR to the default VPC's main route table via the peering connection.
-- `aws_vpc_security_group_ingress_rule.greenspace[<env>]` permits `tcp/5432` from each Greenspace VPC CIDR (`10.0.0.0/16` staging, `10.1.0.0/16` prod) — one rule per environment so a staging-only outage cannot reach prod.
+- The Greenspace VPC CIDRs (`10.0.0.0/16` staging, `10.1.0.0/16` prod) are added to the inline `ingress` block on `aws_security_group.rds` (`network.tf`) via `concat(var.allowed_ingress_cidrs, [for v in local.greenspace_peering : v.vpc_cidr])`. AWS treats each `cidr_blocks` entry as a separate ingress rule on the SG, so revoking just the staging CIDR is a one-line edit and a single API call — the prod CIDR and operator `/32`s stay in place.
 
-To add a third environment, add an entry to the `local.greenspace_peering` map in `peering.tf`. All four resource types use `for_each` over that map, so a one-line edit picks up everywhere.
+To add a third environment, add an entry to the `local.greenspace_peering` map in `peering.tf`. The peering data source, options, route, and the inline SG ingress all read from that map (the SG ingress via `concat(...)` over the map's CIDRs), so a one-line edit picks up everywhere.
 
 **Operator sequencing:** the data source for the peering connection fails to plan until Greenspace has applied. When the two repos move together, apply Greenspace first (which creates the peerings), then apply this repo (which configures the accepter side). This repo's PR can be reviewed and merged at any time — CI's lint gate doesn't dial AWS — but `terraform plan` and `apply` will only succeed after the Greenspace apply lands.
 
