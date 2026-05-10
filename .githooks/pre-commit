@@ -31,8 +31,10 @@ if ! terraform fmt -check -recursive; then
 fi
 
 # 2. Linter — recurses into modules/ via tflint's own --recursive.
+# Pin the config explicitly so the recommended preset applies inside modules/
+# (tflint does not walk up to the repo root when descending into subdirs).
 step "tflint --recursive"
-tflint --recursive
+TFLINT_CONFIG_FILE="$REPO_ROOT/.tflint.hcl" tflint --recursive
 
 # 3. Validation — skip backend init so the hook works without AWS creds.
 step "terraform init -backend=false"

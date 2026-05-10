@@ -84,6 +84,10 @@ The hooks installed:
   credentials, network reachability to RDS, and the operator IP in
   `allowed_ingress_cidrs`. CI runs `plan` on every PR.
 
+  > The first commit after `install-hooks.sh` runs `terraform init -backend=false`,
+  > which downloads the `aws` and `cyrilgdn/postgresql` providers (~30s, cached
+  > under `.terraform/`). Subsequent commits use the cache and are fast.
+
 - **`commit-msg`** — enforces [Conventional Commits](https://www.conventionalcommits.org/)
   with a 72-character summary limit. See the next section.
 

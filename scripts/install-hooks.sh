@@ -8,6 +8,12 @@ set -euo pipefail
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 cd "$REPO_ROOT"
 
+existing="$(git config --get core.hooksPath || true)"
+if [[ -n "$existing" && "$existing" != ".githooks" ]]; then
+  echo "⚠️  core.hooksPath is currently set to '$existing'."
+  echo "    Overwriting with '.githooks'."
+fi
+
 git config core.hooksPath .githooks
 echo "✅ Git hooks enabled (core.hooksPath = .githooks)"
 
