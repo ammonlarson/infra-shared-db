@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+#
+# Git commit-msg hook to enforce Conventional Commits.
+# See README.md (Contribution Guidelines) for details.
+
+COMMIT_MSG_FILE="$1"
+COMMIT_MSG_FIRST_LINE="$(head -n1 "$COMMIT_MSG_FILE")"
+
+# Allow merge commits and version-control-generated messages
+if [[ "$COMMIT_MSG_FIRST_LINE" =~ ^Merge\  ]]; then
+  exit 0
+fi
+
+# Regex patterns stored in variables to avoid bash version quirks with inline regex
+CONVENTIONAL_REGEX='^(feat|fix|docs|refactor|perf|test|build|ci|chore|revert|i18n|ui|agent|infra|ux)(\([a-z0-9_-]+\))?: .{1,72}$'
+TYPE_PREFIX_REGEX='^(feat|fix|docs|refactor|perf|test|build|ci|chore|revert|i18n|ui|agent|infra|ux)'
+UNCLOSED_SCOPE_REGEX='^[a-z]+\([^)]*$'
+MISSING_COLON_REGEX='^[a-z0-9]+(\([a-z0-9_-]+\))?:'
+MISSING_MESSAGE_REGEX='^[a-z]+(\([a-z0-9_-]+\))?:$'
+MISSING_SPACE_REGEX='^[a-z]+(\([a-z0-9_-]+\))?:[^ ]'
+
+if [[ ! "$COMMIT_MSG_FIRST_LINE" =~ $CONVENTIONAL_REGEX ]]; then
+  echo "❌ Invalid commit message format."
+  echo
+  echo "Your message: \"$COMMIT_MSG_FIRST_LINE\""
+  echo
+
+  # Diagnose the specific issue
+  if [[ ! "$COMMIT_MSG_FIRST_LINE" =~ $TYPE_PREFIX_REGEX ]]; then
+    echo "❌ Missing or invalid type prefix"
+    echo "   Must start with: feat, fix, docs, refactor, perf, test, build, ci, chore, revert, i18n, ui, or agent"
+  elif [[ "$COMMIT_MSG_FIRST_LINE" =~ $UNCLOSED_SCOPE_REGEX ]]; then
+    echo "❌ Unclosed scope parenthesis"
+    echo "   If using scope, format should be: type(scope): message"
+  elif [[ ! "$COMMIT_MSG_FIRST_LINE" =~ $MISSING_COLON_REGEX ]]; then
+    echo "❌ Missing colon after type/scope"
+    echo "   Format should be: type: message or type(scope): message"
+  elif [[ "$COMMIT_MSG_FIRST_LINE" =~ $MISSING_MESSAGE_REGEX ]]; then
+    echo "❌ Missing message after colon"
+    echo "   A summary is required after the colon"
+  elif [[ "$COMMIT_MSG_FIRST_LINE" =~ $MISSING_SPACE_REGEX ]]; then
+    echo "❌ Missing space after colon"
+    echo "   Format should be: type: message (note the space after colon)"
+  elif [[ "${#COMMIT_MSG_FIRST_LINE}" -gt 72 ]]; then
+    echo "❌ Message too long (${#COMMIT_MSG_FIRST_LINE} chars)"
+    echo "   Summary should be <= 72 characters total (including type and scope)"
+  else
+    echo "❌ Format doesn't match conventional commits pattern"
+  fi
+
+  echo
+  echo "Expected: [optional scope]: "
+  echo
+  echo "Examples:"
+  echo "  feat(api): add customer search"
+  echo "  fix(auth): handle expired refresh token"
+  echo "  docs: update local setup instructions"
+  echo
+  exit 1
+fi
+
+exit 0

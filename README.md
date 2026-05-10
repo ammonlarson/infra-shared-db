@@ -55,8 +55,66 @@ Shared Postgres infrastructure for low-volume projects. One RDS instance hosts m
 - AWS account with admin access (for one-time bootstrap only)
 - `aws` CLI configured locally
 - `terraform` >= 1.6
+- [`tflint`](https://github.com/terraform-linters/tflint) (used by the local pre-commit hook)
 - `gh` CLI (optional, for repo creation)
 - A local `terraform.tfvars` containing your operator IP (see [Operator IP and `terraform.tfvars`](#operator-ip-and-terraformtfvars) below). **Required for any local `terraform plan` or `apply` that touches Postgres-level resources.**
+
+## Contribution guidelines
+
+### Enable the local Git hooks
+
+This repo ships its hooks in `.githooks/` so every contributor runs the same
+local quality gates. Activate them once per clone:
+
+```bash
+./scripts/install-hooks.sh
+```
+
+That sets `core.hooksPath = .githooks` for this clone and (if `tflint` is on
+your PATH) initializes its plugins. No global tooling, no `npm`, no Husky.
+
+The hooks installed:
+
+- **`pre-commit`** — mirrors the CI quality gates that don't need AWS creds:
+  - `terraform fmt -check -recursive`
+  - `tflint --recursive` (config: [`.tflint.hcl`](./.tflint.hcl))
+  - `terraform init -backend=false` + `terraform validate`
+
+  `terraform plan` is intentionally not in the hook: it requires AWS
+  credentials, network reachability to RDS, and the operator IP in
+  `allowed_ingress_cidrs`. CI runs `plan` on every PR.
+
+- **`commit-msg`** — enforces [Conventional Commits](https://www.conventionalcommits.org/)
+  with a 72-character summary limit. See the next section.
+
+To bypass the hooks for a single commit (e.g. a work-in-progress save), use
+`git commit --no-verify`. Don't make a habit of it.
+
+### Commit message format
+
+Commits must match:
+
+```
+<type>(<optional-scope>): <summary>
+```
+
+- **Allowed types:** `feat`, `fix`, `docs`, `refactor`, `perf`, `test`,
+  `build`, `ci`, `chore`, `revert`, `i18n`, `ui`, `agent`, `infra`, `ux`.
+- **Scope** (optional) is lowercase, alphanumeric, with `-` or `_`.
+- **Summary** is the first line; total length (type + scope + summary) must
+  be 72 characters or fewer.
+- Merge commits (`Merge ...`) are passed through.
+
+Examples:
+
+```
+feat(projects): add greenspace project
+fix(rds): tighten ingress to operator /32
+docs: clarify local apply for Postgres-level changes
+```
+
+The hook prints a targeted diagnostic on rejection (missing type, unclosed
+scope, missing colon, missing space, message too long, etc.).
 
 ## Operator IP and `terraform.tfvars`
 
