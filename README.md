@@ -99,7 +99,7 @@ To bypass the hooks for a single commit (e.g. a work-in-progress save), use
 Commits must match:
 
 ```
-<type>(<optional-scope>): <summary>
+<type>[(<scope>)]: <summary>
 ```
 
 - **Allowed types:** `feat`, `fix`, `docs`, `refactor`, `perf`, `test`,
