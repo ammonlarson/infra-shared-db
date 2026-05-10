@@ -332,7 +332,7 @@ terraform output default_vpc_cidr
 
 ## Connecting from a project repo
 
-The runtime needs IAM permission to read its own secret. Example Python:
+The runtime needs IAM permission to read its own secret. The JSON shape of the secret payload is documented as a stable contract in [`SECRET_SCHEMA.md`](./SECRET_SCHEMA.md) — read it before writing consumer code, and run the [pre-merge verification step](./ADDING_A_PROJECT.md#6-verify-the-live-secret-payload-before-merging) against every environment the consumer targets. Example Python:
 
 ```python
 import boto3, json, os
