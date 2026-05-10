@@ -390,6 +390,7 @@ See [ADDING_A_PROJECT.md](./ADDING_A_PROJECT.md#removing-a-project).
 ## Troubleshooting
 
 - **`terraform apply` proposes removing your CIDR from `aws_security_group.rds`.** You ran without `terraform.tfvars` (or the file is missing/empty). Don't apply — populate the file first. See [Operator IP and `terraform.tfvars`](#operator-ip-and-terraformtfvars).
+- **`terraform plan` errors on `data.aws_vpc_peering_connection.greenspace` with `no matching VPC peering connection found`.** The peering connections in `peering.tf` are created by the Greenspace repo, not this one. Until the Greenspace operator populates `shared_db_vpc_id` in `infra/terraform/environments/{staging,prod}/main.tf` and runs `terraform apply`, the data sources have nothing to find — and that blocks every `terraform plan` in this repo, including unrelated project changes. See [Greenspace VPC peering (accepter side)](#greenspace-vpc-peering-accepter-side).
 - **`role already exists` on first apply.** The `postgresql` provider can race during the very first apply when both the database and role are new. Re-run `terraform apply`.
 - **`InvalidLocationConstraint` creating the state bucket.** You're in `us-east-1`; drop the `--create-bucket-configuration` flag.
 - **GHA can't assume the role.** The trust policy's `sub` condition must match `repo:<owner>/<repo>:*` exactly. Recreate the role's trust policy if the repo was renamed.

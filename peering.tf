@@ -23,6 +23,16 @@ data "aws_vpc_peering_connection" "greenspace" {
     name   = "tag:Name"
     values = [each.value.peering_tag_name]
   }
+
+  filter {
+    name   = "status-code"
+    values = ["active"]
+  }
+
+  filter {
+    name   = "accepter-vpc-info.vpc-id"
+    values = [data.aws_vpc.default.id]
+  }
 }
 
 # Without accepter-side DNS resolution the public RDS endpoint resolves to
@@ -39,7 +49,7 @@ resource "aws_vpc_peering_connection_options" "greenspace" {
   }
 }
 
-resource "aws_route" "greenspace_peering" {
+resource "aws_route" "greenspace" {
   for_each = local.greenspace_peering
 
   route_table_id            = data.aws_route_table.default_main.id
