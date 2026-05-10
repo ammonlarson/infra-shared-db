@@ -5,8 +5,10 @@
       "name": "Run pre-commit hook",
       "type": "node-terminal",
       "request": "launch",
-      "command": "./.githooks/pre-commit",
-      "cwd": "${workspaceFolder}"
+      "preLaunchTask": "Run pre-commit hook",
+      "command": "true",
+      "cwd": "${workspaceFolder}",
+      "internalConsoleOptions": "neverOpen"
     }
   ]
 }
