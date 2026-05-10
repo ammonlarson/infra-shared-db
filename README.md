@@ -298,6 +298,16 @@ The `postgresql` provider needs network reachability to RDS to manage databases 
 
 For a single-operator side-project setup, public + restricted SG is simpler and equally safe. Switch to private only if compliance requires it.
 
+## Per-environment projects
+
+Projects with multiple deployment environments (e.g. staging and production) get one shared-db project per environment, named `<project>_<env>`. Each environment gets its own database, role, and secret — never one shared database for both. This keeps environment data fully isolated and lets each environment's password rotate independently.
+
+Currently used by:
+
+- **Greenspace** — `greenspace_staging` (secret `rds/shared/greenspace_staging`) and `greenspace_prod` (secret `rds/shared/greenspace_prod`). Each environment's runtime sets `DB_SECRET_ID` to its own secret ID and is granted IAM access only to that ARN.
+
+The convention is enforced by the project name itself (which becomes the database, role, and secret), so the only place to add or remove a per-environment project is the list in `projects.tf` — same flow as any other project (see [ADDING_A_PROJECT.md](./ADDING_A_PROJECT.md)).
+
 ## Connecting from a project repo
 
 The runtime needs IAM permission to read its own secret. Example Python:

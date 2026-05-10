@@ -15,6 +15,8 @@ Use lowercase `snake_case`, no leading digits. The name becomes:
 
 Examples: `curtain_call`, `loppemarked_2026`, `interhuman_blog`.
 
+If your project has multiple deployment environments (staging, production), use one entry per environment with a `<project>_<env>` suffix — see [Per-environment projects](./README.md#per-environment-projects) in `README.md`.
+
 ## 2. Add it to `projects.tf`
 
 ```hcl
