@@ -2,7 +2,7 @@
 
 When a new project needs a database, do this.
 
-> **Heads-up:** project provisioning uses the `postgresql` provider, which has to reach RDS over the network. Only the operator's IP is in `allowed_ingress_cidrs`, not the GHA runner's, so once any project exists in state, **every** CI `plan` and `apply` will fail at refresh — and from that point on **you run `terraform apply` from your laptop** for *any* change to this repo, not just project add/remove. Make sure your `terraform.tfvars` is up to date before you start — see the [Operator IP](./README.md#operator-ip-and-terraformtfvars) section in `README.md`.
+> **Heads-up:** all `terraform plan` / `apply` runs are operator-side, not CI. CI is a lint gate (`fmt`/`init`/`validate`) and never deploys. Make sure your `terraform.tfvars` is up to date before you start — see the [Operator IP](./README.md#operator-ip-and-terraformtfvars) section in `README.md`.
 
 ## 1. Pick a name
 
@@ -27,9 +27,9 @@ locals {
 }
 ```
 
-## 3. Open a PR
+## 3. Plan locally and open a PR
 
-GitHub Actions runs `terraform plan`. The PR plan will fail on the Postgres-level resources because the GHA runner can't reach RDS — that's expected. Run `terraform plan` locally too, where the `postgresql` provider can connect:
+CI will run `fmt`/`init`/`validate` on the PR but won't produce a diff. Run `terraform plan` from your laptop to get the authoritative plan:
 
 ```bash
 git checkout <your-branch>
@@ -48,19 +48,17 @@ If anything is being **destroyed**, stop and investigate before merging.
 
 ## 4. Apply locally, then merge
 
-Because CI can't apply the Postgres-level resources, **apply from your laptop first** while you're still on the branch:
+Apply from your laptop while you're still on the branch:
 
 ```bash
 terraform apply
 ```
 
-Then merge the PR. The CI `apply` job will fail on refresh of the new `postgresql_*` resources — that's expected and harmless; state already matches because you applied locally. The new secret appears at:
+Then merge the PR. CI's lint job runs against `main` but does no further work. The new secret appears at:
 
 ```
 arn:aws:secretsmanager:<region>:<account>:secret:rds/shared/<name>
 ```
-
-If you'd rather merge first and apply after, that works too — the `production` environment will sit waiting and the CI apply job will fail at refresh, but once you've applied locally the state is correct.
 
 ## 5. Wire the secret into the project
 
@@ -97,9 +95,9 @@ Use the project's existing migration tooling (Alembic, Prisma, etc.) against `DA
 
 1. Take a `pg_dump` if you might want the data later (see the operations section in the main README).
 2. Remove the entry from `projects.tf`.
-3. Open a PR. CI `plan` will fail on the Postgres-level destroys for the same reason adds do — run `terraform plan` locally to verify.
+3. Run `terraform plan` locally and open a PR.
 4. The plan will show **destroys** for that project's database, role, password, and secret. Confirm only that project's resources are affected.
-5. Run `terraform apply` from your laptop to drop the Postgres-level resources, then merge. The database and its data are gone after the local apply. The Secrets Manager secret is scheduled for deletion (default 30-day recovery window).
+5. Run `terraform apply` from your laptop, then merge. The database and its data are gone after the local apply. The Secrets Manager secret is scheduled for deletion (default 30-day recovery window).
 
 ## FAQ
 
