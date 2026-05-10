@@ -89,7 +89,36 @@ c = json.loads(raw["SecretString"])
 DATABASE_URL = f"postgresql://{c['username']}:{c['password']}@{c['host']}:{c['port']}/{c['database']}"
 ```
 
-## 6. Run migrations
+The exact JSON field names (`database`, `host`, `password`, `port`, `username`) are documented in [`SECRET_SCHEMA.md`](./SECRET_SCHEMA.md). Note that the database name is keyed `database` — **not** `dbname`, as the AWS-managed RDS rotation Lambda would write. A consumer that reads `dbname` will silently get `undefined` and fail at connection time.
+
+## 6. Verify the live secret payload before merging
+
+Before merging the consumer PR, run the following against **every** environment the consumer targets and cross-check the returned keys against the field names referenced in the consuming code:
+
+```bash
+aws secretsmanager get-secret-value \
+  --secret-id rds/shared/<name> \
+  --region <aws-region> \
+  --query SecretString --output text | jq 'keys'
+```
+
+Expected output:
+
+```json
+[
+  "database",
+  "host",
+  "password",
+  "port",
+  "username"
+]
+```
+
+Run the command separately for each environment (e.g. `rds/shared/<name>_staging` **and** `rds/shared/<name>_prod`). Staging and prod can diverge in principle, so checking one is not sufficient.
+
+If the printed keys do not match what the consumer reads, do **not** merge — fix the consumer to use the names in [`SECRET_SCHEMA.md`](./SECRET_SCHEMA.md) first. This step exists because skipping it caused a production incident in the `greenspace` consumer (`ammonlarson/greenspace` #346 / #348).
+
+## 7. Run migrations
 
 Use the project's existing migration tooling (Alembic, Prisma, etc.) against `DATABASE_URL`. Nothing about migrations changes — the project owns its database and can do whatever it wants inside it.
 
