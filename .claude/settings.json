@@ -1,0 +1,129 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(brew install:*)",
+      "Bash(cd:*)",
+      "Bash(claude mcp:*)",
+      "Bash(env:*)",
+      "Bash(find:*)",
+      "Bash(gcloud auth list:*)",
+      "Bash(gcloud config list:*)",
+      "Bash(gcloud projects describe:*)",
+      "Bash(gh:*)",
+      "Bash(gh api:*)",
+      "Bash(gh issue:*)",
+      "Bash(gh label:*)",
+      "Bash(gh pr:*)",
+      "Bash(git:*)",
+      "Bash(git add:*)",
+      "Bash(git branch:*)",
+      "Bash(git checkout:*)",
+      "Bash(git commit:*)",
+      "Bash(git diff:*)",
+      "Bash(git fetch:*)",
+      "Bash(git log:*)",
+      "Bash(git merge:*)",
+      "Bash(git pull:*)",
+      "Bash(git push:*)",
+      "Bash(git remote:*)",
+      "Bash(git rm:*)",
+      "Bash(git stash:*)",
+      "Bash(git status:*)",
+      "Bash(grep:*)",
+      "Bash(kubectl get:*)",
+      "Bash(kubectl describe:*)",
+      "Bash(kubectl rollout status:*)",
+      "Bash(npm ci)",
+      "Bash(npm install)",
+      "Bash(npm run dev:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm run lint:*)",
+      "Bash(npm run preview:*)",
+      "Bash(npm test:*)",
+      "Bash(npx eslint:*)",
+      "Bash(npx playwright:*)",
+      "Bash(printf:*)",
+      "Bash(pyright:*)",
+      "Bash(pytest:*)",
+      "Bash(ruff:*)",
+      "Bash(supabase db dump:*)",
+      "Bash(supabase start:*)",
+      "Bash(uv run devtools:*)",
+      "Bash(uv run pyright:*)",
+      "Bash(uv run pytest:*)",
+      "Bash(uv run ruff:*)",
+      "Bash(wc:*)",
+      "Bash(xcodebuild:*)",
+      "Bash(xcodegen generate:*)",
+      "Bash(xcrun devicectl:*)",
+      "WebFetch(domain:claude.com)",
+      "WebFetch(domain:interhuman.ai)",
+      "WebFetch(domain:linear.app)",
+      "mcp__linear__*",
+      "mcp__claude_ai_Linear__*",
+      "mcp__context7__*",
+      "mcp__ide__*",
+      "mcp__plugin_linear_linear__*",
+      "mcp__pluginn_mcp_context7__*",
+      "mcp__sequential-thinking__*",
+      "Edit",
+      "Read",
+      "Write",
+      "Edit(//tmp/**)",
+      "Read(//tmp/**)",
+      "Write(//tmp/**)"
+    ],
+    "defaultMode": "acceptEdits"
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "remote",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "export GH_TOKEN=\"$(op read 'op://Personal/d4f7rto4ctzswk4wtwtawe7l4a/credential')\""
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -c \"import sys,json; data=json.load(sys.stdin); cmd=data.get('command','').strip(); blocked=['ls','grep','find','cat','head','tail','sed','awk']; first=cmd.split()[0] if cmd else ''; sys.exit(2) if first in blocked else None\" 2>&1 || (echo 'BLOCKED: Use dedicated tools instead of Bash for file ops: Glob(find/ls), Grep(grep), Read(cat/head/tail/sed)' && exit 2)"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+        {
+            "matcher": "Edit|Write|NotebookEdit",
+            "hooks": [
+            {
+                "type": "command",
+                "command": "jq -r '.tool_input.file_path // empty' | grep -E '\\.py$' | xargs -r uv run ruff format"
+            }
+            ]
+        }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "~/.claude/statusline.sh"
+  },
+  "enabledPlugins": {
+    "pyright-lsp@claude-plugins-official": true,
+    "context7@claude-plugins-official": true,
+    "code-review@claude-plugins-official": true,
+    "github@claude-plugins-official": true,
+    "playwright@claude-plugins-official": true,
+    "pr-review-toolkit@claude-plugins-official": true,
+    "claude-md-management@claude-plugins-official": true,
+    "linear@claude-plugins-official": true
+  },
+  "alwaysThinkingEnabled": true,
+  "promptSuggestionEnabled": false
+}
