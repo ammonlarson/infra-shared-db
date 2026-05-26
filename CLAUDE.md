@@ -116,6 +116,7 @@ npm test  # or equivalent for this project
 ```bash
 npm run lint
 ```
+
 or equivalent linting command for the project.
 
 - [ ] No new linting errors introduced
@@ -125,6 +126,7 @@ or equivalent linting command for the project.
 ```bash
 npm run build
 ```
+
 or equivalent build command for the project.
 
 - [ ] Build completes successfully
@@ -136,6 +138,7 @@ or equivalent build command for the project.
 - [ ] No debugging code left (console.log, debugger, etc.)
 
 ### 3.5 Visual Verification
+
 When a change affects user-facing UI, use the Playwright MCP server to:
 
 - [ ] Start the dev server (or relevant preview).
@@ -387,6 +390,7 @@ Phase 4: Submission
 **Remember: This file is not a suggestion. It is a requirement.**
 
 **When in doubt, re-read this file. When finishing a task, verify all phases complete.**
+
 # PROJECT-SPECIFIC INFORMATION
 
 ---
