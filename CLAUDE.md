@@ -51,13 +51,22 @@ Create `.agent/ticket-<number>-plan.md` with:
 git checkout main && git pull
 ```
 
-Create feature branch using the project format.
+Create a feature branch using the project format. Follow the branch naming
+rules whenever possible — this is the preferred path.
+
+**Note on Claude Code remote:** Claude Code remote generally creates a branch
+_before_ it reads `CLAUDE.md`, so the steps above cannot always be followed
+literally. If work is already happening in a branch that was created outside
+this workflow before `CLAUDE.md` was read, that is acceptable — continue on
+that branch rather than treating it as a violation. Only create a new branch
+when you are not already on a suitable working branch.
 
 **CHECKPOINT: Phase 1 complete?**
 
 - ✅ Ticket read, labels added, and status updated
 - ✅ Plan created
-- ✅ Branch created from latest main
+- ✅ On a working branch (created from latest main when possible, or the
+  pre-existing branch provided by the remote workflow)
 
 **If NO to any item, STOP and complete it NOW.**
 
@@ -90,6 +99,7 @@ Create feature branch using the project format.
 - Provide user-facing error messages (not just console.error)
 - Consider edge cases and error states
 - Ensure that any relevant changes are reflected in README.md
+- If any new environment variables are added, add them into the appropriate environment `.example` file in the same change (not as a separate cleanup step)
 
 **Workflow Customizations**
 Follow all Task Execution Workflow Customizations steps or instructions included in this file.
