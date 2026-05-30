@@ -169,16 +169,20 @@ You no longer need a `terraform.tfvars` for routine work — the defaults match 
 | --- | --- | --- |
 | `fmt -check`, `init`, `validate` (lint gate) | CI on every PR/push (`terraform.yml`) | No — never dials RDS |
 | `terraform plan` / `apply` (laptop) | Operator laptop | Yes — open `scripts/db-tunnel.sh` first |
-| `terraform plan` / `apply` (CI) | `workflow_dispatch` job (`terraform-apply.yml`) | Yes — the job opens the tunnel on the runner |
+| `terraform apply` (CI, auto) | `terraform-apply.yml` on push to `main` (Terraform-relevant paths) | Yes — the job opens the tunnel on the runner |
+| `terraform plan` / `apply` (CI, manual) | `workflow_dispatch` job (`terraform-apply.yml`) | Yes — the job opens the tunnel on the runner |
 | `psql`, `pg_dump`, password rotation | Operator laptop | Yes |
 
 ### Running plan/apply from CI
 
-Unlike before, CI **can** now refresh Postgres-level resources. The `Terraform apply (via SSM bastion)` workflow (`.github/workflows/terraform-apply.yml`) is a manual `workflow_dispatch` with a `plan`/`apply` choice. It authenticates via the existing GitHub OIDC role, installs the Session Manager plugin, opens the same SSM port-forward on the runner (so the provider reaches RDS at `127.0.0.1:15432`), then runs the chosen Terraform action.
+CI refreshes Postgres-level resources through the `Terraform apply (via SSM bastion)` workflow (`.github/workflows/terraform-apply.yml`). It authenticates via the existing GitHub OIDC role, installs the Session Manager plugin, opens the same SSM port-forward on the runner (so the provider reaches RDS at `127.0.0.1:15432`), then runs Terraform. It runs two ways:
 
-It is intentionally **not** wired to push/PR: applies stay a deliberate act. The bastion must already exist — it is bootstrapped operator-side (see [First Terraform apply](#6-first-terraform-apply)). Use this workflow for routine project-change applies; use a laptop tunnel for the initial bootstrap and anything interactive.
+- **Automatically on merge to `main`.** A push to `main` that touches Terraform-relevant files (`**.tf`, `.terraform.lock.hcl`, `scripts/db-tunnel.sh`, or the workflow itself) runs `terraform apply` — so a merged project change is applied without an operator remembering to trigger it. The path filter keeps docs-only or unrelated merges from applying, a `concurrency` group serializes applies to `main` (an in-progress apply finishes rather than being canceled), and a failed apply surfaces as a failed run in the Actions tab.
+- **Manually via `workflow_dispatch`.** A `plan`/`apply` choice, kept for ad hoc runs — e.g. previewing a `plan` before merge, or re-running an `apply` after a transient failure.
 
-If you want CI to deploy end-to-end, see option (B) or (C) in issue #6 — both lift this constraint, at the cost of more infra.
+It is intentionally **not** wired to `pull_request`: applies only happen after a merge to `main`, never on an open PR. The bastion must already exist — it is bootstrapped operator-side (see [First Terraform apply](#6-first-terraform-apply)). Use a laptop tunnel for the initial bootstrap and anything interactive.
+
+The one piece that still can't run from CI is the initial bastion bootstrap (chicken-and-egg: the apply workflow needs the bastion to reach RDS). For CI access patterns that remove even that, see option (B) or (C) in issue #6, at the cost of more infra.
 
 ## One-time bootstrap
 
@@ -332,9 +336,9 @@ The same two-phase sequence migrates an existing **public-RDS** state to this mo
 Two workflows:
 
 - **`terraform.yml` — lint gate.** Every PR (and every push to `main`) runs `terraform fmt -check -recursive`, `terraform init`, and `terraform validate`. It never dials RDS. AWS auth is OIDC-only; the role exists so `init` can read the S3 backend.
-- **`terraform-apply.yml` — apply via bastion.** A manual `workflow_dispatch` (`plan`/`apply` choice) that opens the SSM tunnel on the runner and runs the chosen action, so CI can refresh `postgresql_role` / `postgresql_database` when appropriate. See [Running plan/apply from CI](#running-planapply-from-ci).
+- **`terraform-apply.yml` — apply via bastion.** Opens the SSM tunnel on the runner and runs Terraform so CI can refresh `postgresql_role` / `postgresql_database`. It runs automatically on push to `main` when Terraform-relevant files change (applying the merged change, serialized by a `concurrency` group), and is also available as a manual `workflow_dispatch` (`plan`/`apply` choice) for ad hoc runs. It never runs on pull requests. See [Running plan/apply from CI](#running-planapply-from-ci).
 
-Laptop runs and the CI apply workflow both reach RDS the same way — through the bastion tunnel. The lint gate is the only thing that runs unconditionally on every change.
+Laptop runs and the CI apply workflow both reach RDS the same way — through the bastion tunnel. The lint gate runs on every PR and push; the bastion apply runs on merges to `main` that touch Terraform files.
 
 ## Network access caveats
 

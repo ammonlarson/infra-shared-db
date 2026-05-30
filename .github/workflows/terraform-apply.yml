@@ -1,15 +1,26 @@
 name: Terraform apply (via SSM bastion)
 
-# Operator-triggered plan/apply that can refresh Postgres-level resources
+# Bastion-based plan/apply that can refresh Postgres-level resources
 # (postgresql_role / postgresql_database) from CI. RDS is private, so this job
 # opens an SSM port-forward through the bastion before running Terraform — the
 # same path scripts/db-tunnel.sh gives an operator locally.
 #
-# This is workflow_dispatch only, not push/PR: applies stay a deliberate act,
-# and the bastion must already exist (it is bootstrapped operator-side — see the
+# Runs two ways:
+#   - automatically on push to main when Terraform-relevant files change, so a
+#     merged Terraform change is applied without an operator remembering to;
+#   - manually via workflow_dispatch with a plan/apply choice, for ad hoc runs.
+# It is never wired to pull_request — applies only happen after a merge to main.
+# The bastion must already exist (it is bootstrapped operator-side — see the
 # migration steps in README.md). The PR lint gate in terraform.yml is unchanged.
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "**.tf"
+      - ".terraform.lock.hcl"
+      - "scripts/db-tunnel.sh"
+      - ".github/workflows/terraform-apply.yml"
   workflow_dispatch:
     inputs:
       action:
@@ -20,6 +31,12 @@ on:
           - apply
         default: plan
 
+# Serialize applies to main so overlapping runs cannot race the same state. An
+# in-progress apply is allowed to finish rather than being canceled mid-write.
+concurrency:
+  group: terraform-apply-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   id-token: write
   contents: read
@@ -27,10 +44,13 @@ permissions:
 env:
   AWS_REGION: eu-north-1
   TF_VERSION: 1.10.0
+  # A push to main always applies the merged change; workflow_dispatch honors the
+  # chosen plan/apply input.
+  TF_ACTION: ${{ github.event_name == 'workflow_dispatch' && inputs.action || 'apply' }}
 
 jobs:
   terraform:
-    name: Terraform ${{ inputs.action }}
+    name: Terraform ${{ github.event_name == 'workflow_dispatch' && inputs.action || 'apply' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -74,11 +94,11 @@ jobs:
         run: terraform init
 
       - name: Terraform plan
-        if: ${{ inputs.action == 'plan' }}
+        if: ${{ env.TF_ACTION == 'plan' }}
         run: terraform plan
 
       - name: Terraform apply
-        if: ${{ inputs.action == 'apply' }}
+        if: ${{ env.TF_ACTION == 'apply' }}
         run: terraform apply -auto-approve
 
       - name: Close SSM tunnel
