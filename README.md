@@ -313,7 +313,7 @@ terraform init
 terraform apply \
   -target=aws_db_instance.shared \
   -target=aws_instance.bastion \
-  -target=aws_iam_role_policy_attachment.bastion
+  -target=aws_iam_role_policy_attachment.bastion_ssm
 
 # 2. Open the tunnel through the new bastion (leave it running).
 scripts/db-tunnel.sh   # in a second terminal
@@ -437,7 +437,7 @@ See [ADDING_A_PROJECT.md](./ADDING_A_PROJECT.md#removing-a-project).
 
 - **`terraform plan`/`apply` hangs or errors connecting to Postgres (`dial tcp 127.0.0.1:5432: connect: connection refused`, or a timeout).** The SSM tunnel isn't open. Run `scripts/db-tunnel.sh` in another terminal first. See [Operator DB/Terraform access](#operator-dbterraform-access-ssm-tunnel).
 - **`scripts/db-tunnel.sh` fails with `no running 'shared-db-bastion' instance found`.** The bastion hasn't been created yet (or was stopped/terminated). On a fresh state, run `terraform apply` once to create it; when migrating an existing state, use the targeted bootstrap apply in [First Terraform apply](#6-first-terraform-apply).
-- **`StartSession` fails with `TargetNotConnected` / `<instance-id> is not connected`.** The bastion's SSM agent hasn't registered with Systems Manager. Most often it just needs a minute or two after launch — re-run the tunnel. If it persists, the `AmazonSSMManagedInstanceCore` policy isn't attached to the bastion role: run `terraform apply -target=aws_iam_role_policy_attachment.bastion`, wait for `aws ssm describe-instance-information` to show the instance `Online`, then retry. (A phase-1 bootstrap that omitted this target is the usual cause — see [First Terraform apply](#6-first-terraform-apply).)
+- **`StartSession` fails with `TargetNotConnected` / `<instance-id> is not connected`.** The bastion's SSM agent hasn't registered with Systems Manager. Most often it just needs a minute or two after launch — re-run the tunnel. If it persists, the `AmazonSSMManagedInstanceCore` policy isn't attached to the bastion role: run `terraform apply -target=aws_iam_role_policy_attachment.bastion_ssm`, wait for `aws ssm describe-instance-information` to show the instance `Online`, then retry. (A phase-1 bootstrap that omitted this target is the usual cause — see [First Terraform apply](#6-first-terraform-apply).)
 - **`SessionManagerPlugin is not found`.** Install the [Session Manager plugin](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html) for the `aws` CLI.
 - **`terraform plan` errors on `data.aws_vpc_peering_connection.greenspace` with `no matching VPC peering connection found`.** The peering connections in `peering.tf` are created by the Greenspace repo, not this one. Until the Greenspace operator populates `shared_db_vpc_id` in `infra/terraform/environments/{staging,prod}/main.tf` and runs `terraform apply`, the data sources have nothing to find — and that blocks every `terraform plan` in this repo, including unrelated project changes. See [Greenspace VPC peering (accepter side)](#greenspace-vpc-peering-accepter-side).
 - **`role already exists` on first apply.** The `postgresql` provider can race during the very first apply when both the database and role are new. Re-run `terraform apply`.
