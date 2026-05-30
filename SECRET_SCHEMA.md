@@ -8,6 +8,10 @@ applicable, `rds/shared/master`).
 > Source of truth: `modules/project/main.tf`
 > ([`aws_secretsmanager_secret_version.app`](./modules/project/main.tf)).
 > The master secret in [`rds.tf`](./rds.tf) uses the same field names.
+>
+> Machine-readable contract: [`schemas/secret.schema.json`](./schemas/secret.schema.json)
+> (JSON Schema). Enforce it with [`scripts/verify-secret-shape.sh`](./scripts/verify-secret-shape.sh) —
+> see [Verifying a live secret](#verifying-a-live-secret).
 
 ## Why this doc exists
 
@@ -30,7 +34,7 @@ The `SecretString` is a JSON object with exactly the following keys:
 | `database` | `string` | Stable contract  | Yes      | Postgres database name (matches the project name).            |
 | `host`     | `string` | Stable contract  | Yes      | RDS endpoint hostname (e.g. `shared-postgres.<id>.<region>.rds.amazonaws.com`). |
 | `password` | `string` | Stable contract  | Yes      | Password for `username`. Rotates when the operator runs `terraform taint` on the project's `random_password.app`. |
-| `port`     | `number` | Stable contract  | Yes      | TCP port (currently `5432`). JSON `number`, not a string.     |
+| `port`     | `integer` | Stable contract | Yes      | TCP port (currently `5432`). A JSON `number` (integer), not a string. |
 | `username` | `string` | Stable contract  | Yes      | Login role name. Always `<project>_app` for per-project secrets; `tfadmin` for the master secret. |
 
 All five fields above are part of the **stable consumer contract**: a
@@ -71,10 +75,42 @@ contract bump; consumers should only read them with explicit fallbacks.
 
 ## Verifying a live secret
 
-Before merging a consumer PR that reads a shared-db secret, run the
-following against **every** environment the consumer targets, and
-cross-check the printed keys against the field names referenced in the
-consuming code:
+Before merging a consumer PR that reads a shared-db secret, verify the live
+payload against the contract for **every** environment the consumer targets.
+
+### Automated check (preferred)
+
+Use [`scripts/verify-secret-shape.sh`](./scripts/verify-secret-shape.sh). It
+fetches the secret and validates it against
+[`schemas/secret.schema.json`](./schemas/secret.schema.json) — every required
+field must be present with the correct JSON type — and exits non-zero on
+mismatch. Because it returns a non-zero exit code, it drops straight into a
+consumer's CI or deploy pipeline; no operator has to read `jq` output by eye.
+
+```bash
+scripts/verify-secret-shape.sh rds/shared/<project> <aws-region>
+```
+
+Region resolution: the second argument, else `$AWS_REGION`, else `eu-north-1`.
+Run it once per environment (e.g. `rds/shared/greenspace_staging` **and**
+`rds/shared/greenspace_prod`); staging and prod can diverge in principle, so a
+single check is not sufficient.
+
+To validate a payload you already have (e.g. from another tool) without an AWS
+call, pipe it in:
+
+```bash
+echo "$secret_json" | scripts/verify-secret-shape.sh --stdin
+```
+
+Only the stable contract fields are required, so optional/implementation-detail
+fields (see [What is not in the payload](#what-is-not-in-the-payload)) can be
+added later without making this check fail.
+
+### Manual fallback (one-liner)
+
+If you can't run the script, fetch the keys directly and cross-check them
+against the field names referenced in the consuming code:
 
 ```bash
 aws secretsmanager get-secret-value \
@@ -95,12 +131,7 @@ Expected output:
 ]
 ```
 
-Run the command separately for each environment (e.g.
-`rds/shared/greenspace_staging` **and** `rds/shared/greenspace_prod`).
-Staging and prod can in principle diverge, so a single check is not
-sufficient.
-
-If the printed keys do not match the consuming code, **do not merge** —
+If the live payload does not match the consuming code, **do not merge** —
 update the consumer to read the names listed in the [Payload shape](#payload-shape)
 table.
 
@@ -132,6 +163,8 @@ coordinated with every consumer.
   runtime to its secret, including the pre-merge verification step.
 - [`README.md`](./README.md#connecting-from-a-project-repo) — example
   Python that reads the secret and builds a `DATABASE_URL`.
-- Follow-up: structural enforcement (JSON-Schema in this repo, a
-  Terraform output exposing the schema version, or a
-  `scripts/verify-secret-shape.sh` runbook helper) is tracked separately.
+- [`schemas/secret.schema.json`](./schemas/secret.schema.json) — the
+  machine-readable contract. Consumers can pin its `$id` as a `$schema` ref
+  and validate at runtime or in CI.
+- [`scripts/verify-secret-shape.sh`](./scripts/verify-secret-shape.sh) — fetches
+  a secret and validates it against the schema, exiting non-zero on mismatch.

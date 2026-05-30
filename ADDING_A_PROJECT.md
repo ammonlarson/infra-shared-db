@@ -93,7 +93,21 @@ The exact JSON field names (`database`, `host`, `password`, `port`, `username`) 
 
 ## 6. Verify the live secret payload before merging
 
-Before merging the consumer PR, run the following against **every** environment the consumer targets and cross-check the returned keys against the field names referenced in the consuming code:
+Before merging the consumer PR, check the live payload against the contract for **every** environment the consumer targets. Run [`scripts/verify-secret-shape.sh`](./scripts/verify-secret-shape.sh) — it fetches the secret and checks that every required field in [`schemas/secret.schema.json`](./schemas/secret.schema.json) is present with the correct JSON type, exiting non-zero on mismatch, so it can run in the consumer's CI/deploy pipeline instead of being eyeballed:
+
+```bash
+scripts/verify-secret-shape.sh rds/shared/<name> <aws-region>
+```
+
+Region resolution: the second argument, else `$AWS_REGION`, else `eu-north-1`.
+
+Run it separately for **every** environment the consumer targets. For per-environment projects (see [Per-environment projects](./README.md#per-environment-projects) in `README.md`) the environment suffix is part of the project name itself, so the secret IDs are e.g. `rds/shared/greenspace_staging` and `rds/shared/greenspace_prod` — there is no separate "base" project. Check each one. Staging and prod can diverge in principle, so checking one is not sufficient.
+
+If verification fails, do **not** merge — fix the consumer to use the names in [`SECRET_SCHEMA.md`](./SECRET_SCHEMA.md) first. This step exists because skipping it caused a production incident in the `greenspace` consumer (`ammonlarson/greenspace` #346 / #348).
+
+### Manual fallback (one-liner)
+
+If you can't run the script, fetch the keys directly and cross-check them against the field names referenced in the consuming code:
 
 ```bash
 aws secretsmanager get-secret-value \
@@ -113,10 +127,6 @@ Expected output:
   "username"
 ]
 ```
-
-Run the command separately for **every** environment the consumer targets. For per-environment projects (see [Per-environment projects](./README.md#per-environment-projects) in `README.md`) the environment suffix is part of the project name itself, so the secret IDs are e.g. `rds/shared/greenspace_staging` and `rds/shared/greenspace_prod` — there is no separate "base" project. Check each one. Staging and prod can diverge in principle, so checking one is not sufficient.
-
-If the printed keys do not match what the consumer reads, do **not** merge — fix the consumer to use the names in [`SECRET_SCHEMA.md`](./SECRET_SCHEMA.md) first. This step exists because skipping it caused a production incident in the `greenspace` consumer (`ammonlarson/greenspace` #346 / #348).
 
 ## 7. Run migrations
 
