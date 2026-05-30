@@ -95,7 +95,17 @@ resource "aws_instance" "bastion" {
   user_data                   = <<-EOT
     #!/bin/bash
     set -euo pipefail
+    # AL2023 pins releasever to the AMI's baked-in version (deterministic
+    # upgrades), so a plain `dnf upgrade` — which dnf-automatic runs — finds
+    # nothing and the timer would be a no-op. Track `latest` so dnf-automatic
+    # actually pulls published security fixes. Acceptable here: the bastion is a
+    # stateless, recreatable t4g.nano, not an app host that needs a frozen
+    # package set.
+    mkdir -p /etc/dnf/vars
+    echo latest > /etc/dnf/vars/releasever
     dnf install -y dnf-automatic
+    # reboot=never is AL2023's default; set it explicitly so a future AMI
+    # default change can't reintroduce a surprise reboot.
     sed -i \
       -e 's/^upgrade_type = .*/upgrade_type = security/' \
       -e 's/^apply_updates = .*/apply_updates = yes/' \
