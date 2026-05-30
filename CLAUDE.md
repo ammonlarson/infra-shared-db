@@ -535,7 +535,7 @@ terraform apply
 
 RDS is private (`publicly_accessible = false`). Any plan/apply that touches Postgres-level resources needs an open SSM tunnel to the bastion — the `postgresql` provider connects to `var.postgres_host`/`var.postgres_port` (default `127.0.0.1:15432`, where 15432 avoids colliding with a local Postgres), which is what `scripts/db-tunnel.sh` maps. There is no `allowed_ingress_cidrs` and no operator-IP `terraform.tfvars`.
 
-There are no tests, no build step, and no `npm` / language tooling in this repo. CI has two workflows: `terraform.yml` is the lint gate (`fmt -check` + `init` + `validate`) on every PR/push; `terraform-apply.yml` is a manual `workflow_dispatch` plan/apply that opens the same tunnel on the runner. See the README's "Operator DB/Terraform access (SSM tunnel)" section.
+There are no tests, no build step, and no `npm` / language tooling in this repo. CI has two workflows: `terraform-lint.yml` is the lint gate (`fmt -check` + `init` + `validate`) on every PR/push and never dials RDS; `terraform-apply.yml` opens the same tunnel on the runner and runs `terraform plan` on PRs to `main`, `terraform apply` on pushes to `main` (both path-filtered to Terraform-relevant files), plus a manual `workflow_dispatch` plan/apply. See the README's "Operator DB/Terraform access (SSM tunnel)" section.
 
 ## Architecture — what requires reading multiple files
 
@@ -556,9 +556,9 @@ A project's identity is its name string. Renaming is a destroy-and-recreate (see
 
 `backend.tf` references an S3 bucket (`ammonl-db-tf-state`) and DynamoDB lock table (`ammonl-db-tf-locks`) in `eu-north-1`. These exist outside of Terraform's control because of the chicken-and-egg with the state backend — see README.md "One-time bootstrap" for how they were created. Don't try to manage them via this repo.
 
-### CI/CD: lint only
+### CI/CD: lint gate plus bastion plan/apply
 
-`.github/workflows/terraform.yml` runs `fmt -check`, `init`, and `validate` on every PR and push to `main` — the lint gate never dials RDS. `.github/workflows/terraform-apply.yml` is a separate manual `workflow_dispatch` (plan/apply choice) that opens the SSM tunnel on the runner so CI *can* refresh Postgres-level resources when explicitly triggered. AWS auth is GitHub OIDC against the IAM role `gha-terraform-shared-db`; the role exists so `init` can read the S3 backend and (for the apply workflow) manage the bastion and open the port-forward. When reviewing a PR, run `terraform plan` locally (tunnel open) to get the authoritative diff, and verify it matches what ADDING_A_PROJECT.md describes (only additions for new projects, only destroys for removals).
+`.github/workflows/terraform-lint.yml` runs `fmt -check`, `init`, and `validate` on every PR and push to `main` — the lint gate never dials RDS. `.github/workflows/terraform-apply.yml` opens the SSM tunnel on the runner so CI can refresh Postgres-level resources: it runs `terraform plan` on PRs to `main` (the authoritative diff, plan only — it never applies on a PR), `terraform apply` automatically on push to `main`, and a manual `workflow_dispatch` plan/apply, all path-filtered to Terraform-relevant files. AWS auth is GitHub OIDC against the IAM role `gha-terraform-shared-db`; the role exists so `init` can read the S3 backend and (for the bastion workflow) manage the bastion and open the port-forward. The PR plan posts the authoritative diff in CI — verify it matches what ADDING_A_PROJECT.md describes (only additions for new projects, only destroys for removals); you can still reproduce it locally with the tunnel open.
 
 ## Conventions
 

@@ -34,7 +34,8 @@ Shared Postgres infrastructure for low-volume projects. One RDS instance hosts m
 
 ```
 .
-├── .github/workflows/terraform.yml
+├── .github/workflows/terraform-lint.yml
+├── .github/workflows/terraform-apply.yml
 ├── modules/project/
 │   ├── main.tf
 │   ├── variables.tf
@@ -167,20 +168,22 @@ You no longer need a `terraform.tfvars` for routine work — the defaults match 
 
 | Task | Where it runs | Needs the tunnel? |
 | --- | --- | --- |
-| `fmt -check`, `init`, `validate` (lint gate) | CI on every PR/push (`terraform.yml`) | No — never dials RDS |
+| `fmt -check`, `init`, `validate` (lint gate) | CI on every PR/push (`terraform-lint.yml`) | No — never dials RDS |
 | `terraform plan` / `apply` (laptop) | Operator laptop | Yes — open `scripts/db-tunnel.sh` first |
+| `terraform plan` (CI, PRs) | `terraform-apply.yml` on PRs to `main` (Terraform-relevant paths) | Yes — the job opens the tunnel on the runner |
 | `terraform apply` (CI, auto) | `terraform-apply.yml` on push to `main` (Terraform-relevant paths) | Yes — the job opens the tunnel on the runner |
 | `terraform plan` / `apply` (CI, manual) | `workflow_dispatch` job (`terraform-apply.yml`) | Yes — the job opens the tunnel on the runner |
 | `psql`, `pg_dump`, password rotation | Operator laptop | Yes |
 
 ### Running plan/apply from CI
 
-CI refreshes Postgres-level resources through the `Terraform apply (via SSM bastion)` workflow (`.github/workflows/terraform-apply.yml`). It authenticates via the existing GitHub OIDC role, installs the Session Manager plugin, opens the same SSM port-forward on the runner (so the provider reaches RDS at `127.0.0.1:15432`), then runs Terraform. It runs two ways:
+CI reaches the private RDS through the `Terraform plan / apply (via SSM bastion)` workflow (`.github/workflows/terraform-apply.yml`). It authenticates via the existing GitHub OIDC role, installs the Session Manager plugin, opens the same SSM port-forward on the runner (so the provider reaches RDS at `127.0.0.1:15432`), then runs Terraform. Because the diff depends on Postgres state, `terraform plan` runs here too — not in the lint gate, which never dials RDS. It runs three ways:
 
-- **Automatically on merge to `main`.** A push to `main` that touches Terraform-relevant files (`**.tf`, `.terraform.lock.hcl`, `scripts/db-tunnel.sh`, or the workflow itself) runs `terraform apply` — so a merged project change is applied without an operator remembering to trigger it. The path filter keeps docs-only or unrelated merges from applying, a `concurrency` group serializes applies to `main` (an in-progress apply finishes rather than being canceled, and runs that queue behind it coalesce — so back-to-back merges may share one apply rather than getting a run each; the declarative state still converges to the merged `main`), and a failed apply surfaces as a failed run in the Actions tab. A failed apply does not self-retry — including the documented first-apply `role already exists` race — so re-run it via `workflow_dispatch`.
-- **Manually via `workflow_dispatch`.** A `plan`/`apply` choice, kept for ad hoc runs — e.g. previewing a `plan` before merge, or re-running an `apply` after a transient failure.
+- **`terraform plan` on pull requests to `main`.** A PR that touches Terraform-relevant files (`**.tf`, `.terraform.lock.hcl`, `scripts/db-tunnel.sh`, or the workflow itself) runs `terraform plan`, so the authoritative diff is visible in CI before merge. It only plans — a PR never applies. A superseded run is canceled when a newer commit lands on the PR. (PRs from forks can't assume the OIDC role and will fail at AWS auth; this repo's PRs come from same-repo branches.)
+- **`terraform apply` automatically on merge to `main`.** A push to `main` touching the same paths runs `terraform apply` — so a merged project change is applied without an operator remembering to trigger it. The path filter keeps docs-only or unrelated merges from applying, a `concurrency` group serializes applies to `main` (an in-progress apply finishes rather than being canceled, and runs that queue behind it coalesce — so back-to-back merges may share one apply rather than getting a run each; the declarative state still converges to the merged `main`), and a failed apply surfaces as a failed run in the Actions tab. A failed apply does not self-retry — including the documented first-apply `role already exists` race — so re-run it via `workflow_dispatch`.
+- **Manually via `workflow_dispatch`.** A `plan`/`apply` choice, kept for ad hoc runs — e.g. previewing a `plan`, or re-running an `apply` after a transient failure.
 
-It is intentionally **not** wired to `pull_request`: applies only happen after a merge to `main`, never on an open PR. The bastion must already exist — it is bootstrapped operator-side (see [First Terraform apply](#6-first-terraform-apply)). Use a laptop tunnel for the initial bootstrap and anything interactive.
+Applies only ever happen on a push to `main` or a manual dispatch — never on an open PR, which is plan-only. The bastion must already exist — it is bootstrapped operator-side (see [First Terraform apply](#6-first-terraform-apply)). Use a laptop tunnel for the initial bootstrap and anything interactive.
 
 The one piece that still can't run from CI is the initial bastion bootstrap (chicken-and-egg: the apply workflow needs the bastion to reach RDS). For CI access patterns that remove even that, see option (B) or (C) in issue #6, at the cost of more infra.
 
@@ -303,7 +306,7 @@ terraform {
 
 ### 5. Configure the GHA role ARN
 
-Edit `.github/workflows/terraform.yml` and set the `role-to-assume` value to the ARN printed in step 3.
+Edit `.github/workflows/terraform-lint.yml` and `.github/workflows/terraform-apply.yml` and set the `role-to-assume` value in each to the ARN printed in step 3.
 
 ### 6. First Terraform apply
 
@@ -335,10 +338,10 @@ The same two-phase sequence migrates an existing **public-RDS** state to this mo
 
 Two workflows:
 
-- **`terraform.yml` — lint gate.** Every PR (and every push to `main`) runs `terraform fmt -check -recursive`, `terraform init`, and `terraform validate`. It never dials RDS. AWS auth is OIDC-only; the role exists so `init` can read the S3 backend.
-- **`terraform-apply.yml` — apply via bastion.** Opens the SSM tunnel on the runner and runs Terraform so CI can refresh `postgresql_role` / `postgresql_database`. It runs automatically on push to `main` when Terraform-relevant files change (applying the merged change, serialized by a `concurrency` group), and is also available as a manual `workflow_dispatch` (`plan`/`apply` choice) for ad hoc runs. It never runs on pull requests. See [Running plan/apply from CI](#running-planapply-from-ci).
+- **`terraform-lint.yml` — lint gate.** Every PR (and every push to `main`) runs `terraform fmt -check -recursive`, `terraform init`, and `terraform validate`. It never dials RDS. AWS auth is OIDC-only; the role exists so `init` can read the S3 backend.
+- **`terraform-apply.yml` — plan / apply via bastion.** Opens the SSM tunnel on the runner and runs Terraform so CI can refresh `postgresql_role` / `postgresql_database`. It runs `terraform plan` on pull requests to `main` (the authoritative diff for review — plan only, never apply), `terraform apply` automatically on push to `main` when Terraform-relevant files change (serialized by a `concurrency` group), and a manual `workflow_dispatch` (`plan`/`apply` choice) for ad hoc runs. See [Running plan/apply from CI](#running-planapply-from-ci).
 
-Laptop runs and the CI apply workflow both reach RDS the same way — through the bastion tunnel. The lint gate runs on every PR and push; the bastion apply runs on merges to `main` that touch Terraform files.
+Laptop runs and the bastion workflow both reach RDS the same way — through the tunnel. The lint gate runs on every PR and push; the bastion workflow plans on PRs and applies on merges to `main`, both filtered to Terraform-relevant paths.
 
 ## Network access caveats
 
