@@ -1,15 +1,38 @@
-name: Terraform apply (via SSM bastion)
+name: Terraform plan / apply (via SSM bastion)
 
-# Operator-triggered plan/apply that can refresh Postgres-level resources
-# (postgresql_role / postgresql_database) from CI. RDS is private, so this job
-# opens an SSM port-forward through the bastion before running Terraform — the
-# same path scripts/db-tunnel.sh gives an operator locally.
+# Bastion-based plan/apply that reaches the private RDS the same way an operator
+# does locally: RDS has no public endpoint, so this job opens an SSM port-forward
+# through the bastion (scripts/db-tunnel.sh) before running Terraform. That tunnel
+# is what lets the cyrilgdn/postgresql provider refresh postgresql_role /
+# postgresql_database — which is why even `terraform plan` belongs here and not in
+# the fmt/validate lint gate (terraform-lint.yml), which never dials RDS.
 #
-# This is workflow_dispatch only, not push/PR: applies stay a deliberate act,
-# and the bastion must already exist (it is bootstrapped operator-side — see the
-# migration steps in README.md). The PR lint gate in terraform.yml is unchanged.
+# Runs three ways:
+#   - terraform plan on pull requests to main — the authoritative diff for review;
+#   - terraform apply automatically on push to main when Terraform-relevant files
+#     change, so a merged change is applied without an operator remembering to;
+#   - manually via workflow_dispatch with a plan/apply choice, for ad hoc runs.
+# pull_request runs plan only — it never applies; apply happens after the merge.
+# (PRs from forks can't assume the OIDC role, so the plan job there is expected to
+# fail at AWS auth; this repo's PRs come from same-repo branches.) The bastion must
+# already exist — it is bootstrapped operator-side (see the migration steps in
+# README.md).
 
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "**.tf"
+      - ".terraform.lock.hcl"
+      - "scripts/db-tunnel.sh"
+      - ".github/workflows/terraform-apply.yml"
+  push:
+    branches: [main]
+    paths:
+      - "**.tf"
+      - ".terraform.lock.hcl"
+      - "scripts/db-tunnel.sh"
+      - ".github/workflows/terraform-apply.yml"
   workflow_dispatch:
     inputs:
       action:
@@ -20,6 +43,15 @@ on:
           - apply
         default: plan
 
+# Serialize runs per ref so overlapping applies to main cannot race the same
+# state. The group is keyed on the ref, so each PR and the main apply queue
+# independently. A superseded PR plan is canceled when a newer commit lands
+# (cancel-in-progress on pull_request only); a main apply is never canceled
+# mid-write.
+concurrency:
+  group: terraform-apply-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   id-token: write
   contents: read
@@ -27,10 +59,13 @@ permissions:
 env:
   AWS_REGION: eu-north-1
   TF_VERSION: 1.10.0
+  # workflow_dispatch honors the chosen plan/apply input; a pull request plans
+  # (never applies); a push to main applies the merged change.
+  TF_ACTION: ${{ github.event_name == 'workflow_dispatch' && inputs.action || (github.event_name == 'pull_request' && 'plan' || 'apply') }}
 
 jobs:
   terraform:
-    name: Terraform ${{ inputs.action }}
+    name: Terraform ${{ github.event_name == 'workflow_dispatch' && inputs.action || (github.event_name == 'pull_request' && 'plan' || 'apply') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -74,11 +109,11 @@ jobs:
         run: terraform init
 
       - name: Terraform plan
-        if: ${{ inputs.action == 'plan' }}
+        if: ${{ env.TF_ACTION == 'plan' }}
         run: terraform plan
 
       - name: Terraform apply
-        if: ${{ inputs.action == 'apply' }}
+        if: ${{ env.TF_ACTION == 'apply' }}
         run: terraform apply -auto-approve
 
       - name: Close SSM tunnel
