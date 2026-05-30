@@ -98,12 +98,18 @@ jobs:
           echo "Gating on '$LINT_WORKFLOW' for $EVENT_NAME @ $HEAD_SHA"
           deadline=$((SECONDS + TIMEOUT_SECONDS))
           while true; do
-            run_info=$(gh api -X GET \
+            # Tolerate a transient API failure (5xx, rate-limit, network blip):
+            # fall through to the wait branch rather than letting set -e fail the
+            # gate and wrongly skip a legitimate apply. The deadline still bounds it.
+            if ! run_info=$(gh api -X GET \
               "repos/$GH_REPO/actions/workflows/$LINT_WORKFLOW/runs" \
               -f head_sha="$HEAD_SHA" \
               -f event="$EVENT_NAME" \
               --jq '.workflow_runs | sort_by(.run_started_at) | last
-                    | "\(.status // "none") \(.conclusion // "none")"')
+                    | "\(.status // "none") \(.conclusion // "none")"' 2>/dev/null); then
+              echo "Actions API query failed (transient?); will retry." >&2
+              run_info="none none"
+            fi
             status=${run_info%% *}
             conclusion=${run_info##* }
             case "$status" in
