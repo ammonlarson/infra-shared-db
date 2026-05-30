@@ -17,6 +17,12 @@ name: Terraform plan / apply (via SSM bastion)
 # fail at AWS auth; this repo's PRs come from same-repo branches.) The bastion must
 # already exist — it is bootstrapped operator-side (see the migration steps in
 # README.md).
+#
+# Ordering: the real Terraform work is gated behind the terraform-lint.yml lint
+# workflow. The wait-for-lint job blocks the plan/apply job until the lint run for
+# this same change (head SHA + event) finishes successfully, so a broken
+# fmt/validate never reaches the tunnel or RDS state. Manual workflow_dispatch
+# runs skip the gate (an ad hoc run isn't tied to a lint run).
 
 on:
   pull_request:
@@ -64,9 +70,73 @@ env:
   TF_ACTION: ${{ github.event_name == 'workflow_dispatch' && inputs.action || (github.event_name == 'pull_request' && 'plan' || 'apply') }}
 
 jobs:
+  # Gate: don't touch the tunnel or RDS state until the lint workflow has gone
+  # green for this same change. Polls the Actions API for the terraform-lint.yml
+  # run matching this head SHA + event — succeeds only when that run concludes
+  # 'success', fails fast on any other conclusion, and otherwise waits. Skipped
+  # for workflow_dispatch, which isn't tied to a lint run.
+  wait-for-lint:
+    name: Wait for Terraform lint
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'workflow_dispatch' }}
+    timeout-minutes: 25
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Wait for the lint workflow to succeed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          LINT_WORKFLOW: terraform-lint.yml
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          TIMEOUT_SECONDS: "1200"
+          POLL_SECONDS: "15"
+        run: |
+          set -euo pipefail
+          echo "Gating on '$LINT_WORKFLOW' for $EVENT_NAME @ $HEAD_SHA"
+          deadline=$((SECONDS + TIMEOUT_SECONDS))
+          while true; do
+            run_info=$(gh api -X GET \
+              "repos/$GH_REPO/actions/workflows/$LINT_WORKFLOW/runs" \
+              -f head_sha="$HEAD_SHA" \
+              -f event="$EVENT_NAME" \
+              --jq '.workflow_runs | sort_by(.run_started_at) | last
+                    | "\(.status // "none") \(.conclusion // "none")"')
+            status=${run_info%% *}
+            conclusion=${run_info##* }
+            case "$status" in
+              completed)
+                if [ "$conclusion" = "success" ]; then
+                  echo "Lint succeeded — releasing the gate."
+                  exit 0
+                fi
+                echo "Lint concluded '$conclusion' — not proceeding." >&2
+                exit 1
+                ;;
+              none)
+                echo "No lint run found yet for $HEAD_SHA; waiting..."
+                ;;
+              *)
+                echo "Lint status '$status'; waiting..."
+                ;;
+            esac
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "Timed out waiting for the lint workflow to finish." >&2
+              exit 1
+            fi
+            sleep "$POLL_SECONDS"
+          done
+
   terraform:
     name: Terraform ${{ github.event_name == 'workflow_dispatch' && inputs.action || (github.event_name == 'pull_request' && 'plan' || 'apply') }}
     runs-on: ubuntu-latest
+    needs: wait-for-lint
+    # Run after a green gate; also run on workflow_dispatch (gate skipped). Skip
+    # when lint failed (gate 'failure'). !cancelled() forces this if to evaluate
+    # even though the dependency was skipped on a manual dispatch.
+    if: ${{ !cancelled() && (needs.wait-for-lint.result == 'success' || needs.wait-for-lint.result == 'skipped') }}
     steps:
       - uses: actions/checkout@v4
 
