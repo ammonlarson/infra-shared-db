@@ -180,6 +180,17 @@
       "Resource": "*"
     },
     {
+      "Sid": "PeeringRouteLifecycle",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:CreateRoute",
+        "ec2:ReplaceRoute",
+        "ec2:DeleteRoute",
+        "ec2:ModifyVpcPeeringConnectionOptions"
+      ],
+      "Resource": "*"
+    },
+    {
       "Sid": "RdsLifecycle",
       "Effect": "Allow",
       "Action": [
