@@ -341,7 +341,9 @@ Two workflows:
 - **`terraform-lint.yml` — lint gate.** Every PR (and every push to `main`) runs `terraform fmt -check -recursive`, `terraform init`, and `terraform validate`. It never dials RDS. AWS auth is OIDC-only; the role exists so `init` can read the S3 backend.
 - **`terraform-apply.yml` — plan / apply via bastion.** Opens the SSM tunnel on the runner and runs Terraform so CI can refresh `postgresql_role` / `postgresql_database`. It runs `terraform plan` on pull requests to `main` (the authoritative diff for review — plan only, never apply), `terraform apply` automatically on push to `main` when Terraform-relevant files change (serialized by a `concurrency` group), and a manual `workflow_dispatch` (`plan`/`apply` choice) for ad hoc runs. See [Running plan/apply from CI](#running-planapply-from-ci).
 
-Laptop runs and the bastion workflow both reach RDS the same way — through the tunnel. The lint gate runs on every PR and push; the bastion workflow plans on PRs and applies on merges to `main`, both filtered to Terraform-relevant paths.
+The bastion workflow is **gated on the lint gate**: a `wait-for-lint` job blocks the plan/apply job until `terraform-lint.yml` finishes successfully for the same change (matched by head SHA + event). If lint fails, the plan/apply job is skipped; if lint is still running, the apply workflow waits rather than racing ahead. Manual `workflow_dispatch` runs skip the wait (they aren't tied to a lint run).
+
+Laptop runs and the bastion workflow both reach RDS the same way — through the tunnel. The lint gate runs on every PR and push; the bastion workflow plans on PRs and applies on merges to `main`, both filtered to Terraform-relevant paths and gated on a green lint run.
 
 ## Network access caveats
 

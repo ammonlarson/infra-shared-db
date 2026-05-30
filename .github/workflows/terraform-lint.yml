@@ -1,5 +1,9 @@
 name: Terraform lint (fmt / validate)
 
+# Runs on every PR and push to main with no path filter — terraform-apply.yml's
+# wait-for-lint gate depends on a lint run existing for every such change, so
+# don't add a paths filter here without revisiting that gate (a filtered-out lint
+# run would leave the apply waiting until it times out).
 on:
   pull_request:
     branches: [main]
