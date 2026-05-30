@@ -4,6 +4,8 @@ locals {
   projects = [
     "greenspace_staging",
     "greenspace_prod",
+    "loppemarked_staging",
+    "loppemarked_prod",
   ]
 }
 
