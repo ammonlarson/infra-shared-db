@@ -2,7 +2,7 @@
 
 When a new project needs a database, do this.
 
-> **Heads-up:** all `terraform plan` / `apply` runs are operator-side, not CI. CI is a lint gate (`fmt`/`init`/`validate`) and never deploys. Make sure your `terraform.tfvars` is up to date before you start — see the [Operator IP](./README.md#operator-ip-and-terraformtfvars) section in `README.md`.
+> **Heads-up:** RDS is private. Any `terraform plan`/`apply` that touches Postgres-level resources needs an open SSM tunnel to the bastion — start `scripts/db-tunnel.sh` first. You can run plan/apply from your laptop (through the tunnel) or via the manual `Terraform apply (via SSM bastion)` CI workflow, which opens the tunnel on the runner. The PR lint gate (`fmt`/`init`/`validate`) never deploys. See [Operator DB/Terraform access](./README.md#operator-dbterraform-access-ssm-tunnel) in `README.md`.
 
 ## 1. Pick a name
 
