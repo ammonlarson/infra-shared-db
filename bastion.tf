@@ -15,23 +15,20 @@ data "aws_ssm_parameter" "bastion_ami" {
 
 resource "aws_security_group" "bastion" {
   name        = "shared-db-bastion"
-  description = "SSM bastion for shared RDS (egress only)"
+  description = "SSM bastion for shared RDS"
   vpc_id      = data.aws_vpc.default.id
 
+  # Allow all egress. The SSM agent needs more than HTTPS to register: DNS
+  # (53) to resolve the SSM endpoints and NTP (123) to keep its clock in sync
+  # (SigV4/TLS fail on a skewed clock), plus 443 for the channel and package
+  # mirrors. Restricting egress to 443 silently breaks agent registration.
+  # Security here is the empty inbound list, not the egress list.
   egress {
-    description = "HTTPS to SSM endpoints and package mirrors"
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
+    description = "All outbound (SSM channel, DNS, NTP, package mirrors, Postgres)"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  egress {
-    description = "Postgres to the shared RDS instance"
-    from_port   = 5432
-    to_port     = 5432
-    protocol    = "tcp"
-    cidr_blocks = [data.aws_vpc.default.cidr_block]
   }
 }
 
