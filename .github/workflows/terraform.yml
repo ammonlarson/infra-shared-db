@@ -1,4 +1,4 @@
-name: Terraform
+name: Terraform lint (fmt / validate)
 
 on:
   pull_request:
