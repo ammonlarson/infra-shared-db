@@ -42,7 +42,6 @@ LOCAL_PORT="${1:-5432}"
 REGION="${2:-${AWS_REGION:-eu-north-1}}"
 
 command -v aws >/dev/null 2>&1 || die "aws CLI is required but not found in PATH"
-aws ssm help >/dev/null 2>&1 || true
 command -v session-manager-plugin >/dev/null 2>&1 \
   || die "the Session Manager plugin is required: https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html"
 

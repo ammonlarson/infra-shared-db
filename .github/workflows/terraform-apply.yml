@@ -44,23 +44,29 @@ jobs:
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
-      - name: Install Session Manager plugin
+      - name: Install Session Manager plugin and psql client
         run: |
           curl -fsSL "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/ubuntu_64bit/session-manager-plugin.deb" -o /tmp/smp.deb
           sudo dpkg -i /tmp/smp.deb
+          # pg_isready probes the tunnel end to end (it speaks to RDS through the
+          # forward), not just the local listener.
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
 
       - name: Open SSM tunnel to RDS
         run: |
           scripts/db-tunnel.sh 5432 "$AWS_REGION" > /tmp/tunnel.log 2>&1 &
           echo "TUNNEL_PID=$!" >> "$GITHUB_ENV"
+          # A bound local port only means the listener is up; pg_isready confirms
+          # the forward actually reaches RDS before we hand off to Terraform.
           for _ in $(seq 1 30); do
-            if (echo > /dev/tcp/127.0.0.1/5432) 2>/dev/null; then
-              echo "tunnel is up"
+            if pg_isready -h 127.0.0.1 -p 5432 >/dev/null 2>&1; then
+              echo "tunnel reaches RDS"
               exit 0
             fi
             sleep 2
           done
-          echo "tunnel did not come up in time" >&2
+          echo "tunnel did not reach RDS in time" >&2
           cat /tmp/tunnel.log >&2
           exit 1
 
