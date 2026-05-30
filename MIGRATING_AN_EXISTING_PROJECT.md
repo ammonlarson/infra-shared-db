@@ -103,6 +103,8 @@ Each step says **which repo** it happens in and **who/what** runs it.
 4. **Consumer adds requester-side peering** (consumer repo) using the VPC
    id/cidr from step 3, one peering per environment, with a stable `Name` tag
    this repo can discover (e.g. `myapp-staging-2026-shared-db-peering`). The
+   tag string is operator-chosen, but it must match exactly what this repo's
+   accepter-side peering map expects (step 6) — pick it together. The
    consumer creates the peering with `auto_accept = true` and
    `requester.allow_remote_vpc_dns_resolution = true`, then applies — **the
    consumer applies its requester side before this repo can configure the
