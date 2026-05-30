@@ -533,7 +533,7 @@ terraform plan
 terraform apply
 ```
 
-RDS is private (`publicly_accessible = false`). Any plan/apply that touches Postgres-level resources needs an open SSM tunnel to the bastion — the `postgresql` provider connects to `var.postgres_host`/`var.postgres_port` (default `127.0.0.1:5432`), which is what `scripts/db-tunnel.sh` maps. There is no `allowed_ingress_cidrs` and no operator-IP `terraform.tfvars`.
+RDS is private (`publicly_accessible = false`). Any plan/apply that touches Postgres-level resources needs an open SSM tunnel to the bastion — the `postgresql` provider connects to `var.postgres_host`/`var.postgres_port` (default `127.0.0.1:15432`, where 15432 avoids colliding with a local Postgres), which is what `scripts/db-tunnel.sh` maps. There is no `allowed_ingress_cidrs` and no operator-IP `terraform.tfvars`.
 
 There are no tests, no build step, and no `npm` / language tooling in this repo. CI has two workflows: `terraform.yml` is the lint gate (`fmt -check` + `init` + `validate`) on every PR/push; `terraform-apply.yml` is a manual `workflow_dispatch` plan/apply that opens the same tunnel on the runner. See the README's "Operator DB/Terraform access (SSM tunnel)" section.
 

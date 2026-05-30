@@ -19,6 +19,6 @@ output "rds_endpoint" {
 }
 
 output "db_tunnel_command" {
-  description = "Copy-paste SSM port-forward that maps localhost:5432 to the private RDS endpoint. Run it, then `terraform plan`/`apply` (or psql) against localhost."
-  value       = "aws ssm start-session --target ${aws_instance.bastion.id} --document-name AWS-StartPortForwardingSessionToRemoteHost --parameters '{\"host\":[\"${aws_db_instance.shared.address}\"],\"portNumber\":[\"5432\"],\"localPortNumber\":[\"5432\"]}' --region ${var.aws_region}"
+  description = "Copy-paste SSM port-forward that maps localhost:15432 to the private RDS endpoint. Run it, then `terraform plan`/`apply` (or psql) against localhost:15432."
+  value       = "aws ssm start-session --target ${aws_instance.bastion.id} --document-name AWS-StartPortForwardingSessionToRemoteHost --parameters '{\"host\":[\"${aws_db_instance.shared.address}\"],\"portNumber\":[\"5432\"],\"localPortNumber\":[\"15432\"]}' --region ${var.aws_region}"
 }

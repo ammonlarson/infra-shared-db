@@ -8,15 +8,17 @@
 # RDS:5432. Leave it running in one terminal and, in another, point
 # `terraform plan`/`apply` (or psql) at localhost.
 #
-# The Terraform postgresql provider already defaults to 127.0.0.1:5432
+# The Terraform postgresql provider already defaults to 127.0.0.1:15432
 # (var.postgres_host / var.postgres_port), so with the default local port no
-# extra Terraform config is needed. If you forward to a different local port,
-# pass the same value to Terraform via -var='postgres_port=...'.
+# extra Terraform config is needed. The default is 15432 (not 5432) to avoid
+# colliding with a Postgres running on your laptop. If you forward to a
+# different local port, pass the same value to Terraform via
+# -var='postgres_port=...'.
 #
 # Usage:
 #   scripts/db-tunnel.sh [local-port] [aws-region]
-#   scripts/db-tunnel.sh              # localhost:5432 -> RDS, region default
-#   scripts/db-tunnel.sh 15432        # localhost:15432 -> RDS
+#   scripts/db-tunnel.sh              # localhost:15432 -> RDS, region default
+#   scripts/db-tunnel.sh 5432         # localhost:5432 -> RDS (if 15432 is taken)
 #
 # Region resolution: the [aws-region] argument, else $AWS_REGION, else
 # eu-north-1.
@@ -38,7 +40,7 @@ case "${1:-}" in
     ;;
 esac
 
-LOCAL_PORT="${1:-5432}"
+LOCAL_PORT="${1:-15432}"
 REGION="${2:-${AWS_REGION:-eu-north-1}}"
 
 command -v aws >/dev/null 2>&1 || die "aws CLI is required but not found in PATH"
@@ -66,7 +68,7 @@ rds_host="$(aws rds describe-db-instances \
 
 echo "Forwarding localhost:${LOCAL_PORT} -> ${rds_host}:5432 via bastion ${bastion_id} (${REGION})."
 echo "Leave this running; in another terminal run terraform/psql against localhost:${LOCAL_PORT}."
-[[ "$LOCAL_PORT" != "5432" ]] \
+[[ "$LOCAL_PORT" != "15432" ]] \
   && echo "Note: pass -var='postgres_port=${LOCAL_PORT}' to terraform since you changed the local port."
 
 exec aws ssm start-session \

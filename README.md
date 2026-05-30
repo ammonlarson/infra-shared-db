@@ -129,12 +129,12 @@ scope, missing colon, missing space, message too long, etc.).
 
 The RDS instance is `publicly_accessible = false`. There is no public endpoint and no IP allowlist to maintain; the only inbound path to Postgres is an always-on SSM **bastion** (`aws_instance.bastion`, a `t4g.nano` defined in `bastion.tf`). The bastion carries **no inbound security-group rules** — Session Manager works entirely over the agent's outbound connection — so nothing is exposed to the internet. This replaces the old residential-IP allowlist that issue #6 tracked; `var.allowed_ingress_cidrs` is gone.
 
-Because the `cyrilgdn/postgresql` provider has to reach Postgres to manage `postgresql_role` / `postgresql_database`, every `terraform plan`/`apply` once a project exists in state — and any manual `psql` — goes through a port-forward to the bastion. The provider defaults to `127.0.0.1:5432` (`var.postgres_host` / `var.postgres_port`), which is exactly what the tunnel maps.
+Because the `cyrilgdn/postgresql` provider has to reach Postgres to manage `postgresql_role` / `postgresql_database`, every `terraform plan`/`apply` once a project exists in state — and any manual `psql` — goes through a port-forward to the bastion. The provider defaults to `127.0.0.1:15432` (`var.postgres_host` / `var.postgres_port`), which is exactly what the tunnel maps.
 
 **Open the tunnel** (leave it running in its own terminal):
 
 ```bash
-scripts/db-tunnel.sh           # maps localhost:5432 -> private RDS via the bastion
+scripts/db-tunnel.sh           # maps localhost:15432 -> private RDS via the bastion
 ```
 
 The script finds the bastion (by its `Name=shared-db-bastion` tag) and the RDS endpoint for you, then runs `aws ssm start-session ... AWS-StartPortForwardingSessionToRemoteHost`. Terraform also emits a ready-to-paste equivalent as the `db_tunnel_command` output.
@@ -146,16 +146,16 @@ terraform plan
 terraform apply
 
 # or connect directly:
-psql "host=127.0.0.1 port=5432 user=tfadmin dbname=postgres sslmode=require"
+psql "host=127.0.0.1 port=15432 user=tfadmin dbname=postgres sslmode=require"
 ```
 
 **Close it** when done: `Ctrl-C` in the tunnel terminal ends the session.
 
-If port 5432 is already taken locally, forward to another port and tell Terraform:
+The local port is `15432` (not `5432`) so it doesn't collide with a Postgres running on your laptop. If `15432` is also taken, forward to another port and tell Terraform:
 
 ```bash
-scripts/db-tunnel.sh 15432
-terraform plan -var='postgres_port=15432'
+scripts/db-tunnel.sh 5432
+terraform plan -var='postgres_port=5432'
 ```
 
 You no longer need a `terraform.tfvars` for routine work — the defaults match the tunnel. `terraform.tfvars.example` remains as an optional template for the port override (it's whitelisted by `.gitignore`'s `!*.tfvars.example`).
@@ -171,7 +171,7 @@ You no longer need a `terraform.tfvars` for routine work — the defaults match 
 
 ### Running plan/apply from CI
 
-Unlike before, CI **can** now refresh Postgres-level resources. The `Terraform apply (via SSM bastion)` workflow (`.github/workflows/terraform-apply.yml`) is a manual `workflow_dispatch` with a `plan`/`apply` choice. It authenticates via the existing GitHub OIDC role, installs the Session Manager plugin, opens the same SSM port-forward on the runner (so the provider reaches RDS at `127.0.0.1:5432`), then runs the chosen Terraform action.
+Unlike before, CI **can** now refresh Postgres-level resources. The `Terraform apply (via SSM bastion)` workflow (`.github/workflows/terraform-apply.yml`) is a manual `workflow_dispatch` with a `plan`/`apply` choice. It authenticates via the existing GitHub OIDC role, installs the Session Manager plugin, opens the same SSM port-forward on the runner (so the provider reaches RDS at `127.0.0.1:15432`), then runs the chosen Terraform action.
 
 It is intentionally **not** wired to push/PR: applies stay a deliberate act. The bastion must already exist — it is bootstrapped operator-side (see [First Terraform apply](#6-first-terraform-apply)). Use this workflow for routine project-change applies; use a laptop tunnel for the initial bootstrap and anything interactive.
 
@@ -424,7 +424,7 @@ With the tunnel open (`scripts/db-tunnel.sh`), connect through localhost — RDS
 ```bash
 PGPASSWORD=$(aws secretsmanager get-secret-value --secret-id rds/shared/master \
   --query 'SecretString' --output text | jq -r '.password') \
-pg_dump -h 127.0.0.1 -p 5432 -U tfadmin -d proj_a -f proj_a.sql
+pg_dump -h 127.0.0.1 -p 15432 -U tfadmin -d proj_a -f proj_a.sql
 ```
 
 RDS automated snapshots also run nightly with 7-day retention.
@@ -435,7 +435,8 @@ See [ADDING_A_PROJECT.md](./ADDING_A_PROJECT.md#removing-a-project).
 
 ## Troubleshooting
 
-- **`terraform plan`/`apply` hangs or errors connecting to Postgres (`dial tcp 127.0.0.1:5432: connect: connection refused`, or a timeout).** The SSM tunnel isn't open. Run `scripts/db-tunnel.sh` in another terminal first. See [Operator DB/Terraform access](#operator-dbterraform-access-ssm-tunnel).
+- **`terraform plan`/`apply` hangs or errors connecting to Postgres (`dial tcp 127.0.0.1:15432: connect: connection refused`, or a timeout).** The SSM tunnel isn't open. Run `scripts/db-tunnel.sh` in another terminal first. See [Operator DB/Terraform access](#operator-dbterraform-access-ssm-tunnel).
+- **`pq: SSL is not enabled on the server` connecting to `127.0.0.1`.** The provider reached a *different* Postgres than RDS (RDS supports SSL) — almost always a Postgres on your laptop occupying the tunnel's local port, so the forward never bound and the provider fell through to the local server. The default local port is `15432` to avoid this; if you have something on `15432` too, forward elsewhere: `scripts/db-tunnel.sh 5432` then `terraform apply -var='postgres_port=5432'`.
 - **`scripts/db-tunnel.sh` fails with `no running 'shared-db-bastion' instance found`.** The bastion hasn't been created yet (or was stopped/terminated). On a fresh state, run `terraform apply` once to create it; when migrating an existing state, use the targeted bootstrap apply in [First Terraform apply](#6-first-terraform-apply).
 - **`StartSession` fails with `TargetNotConnected` / `<instance-id> is not connected`.** The bastion's SSM agent hasn't registered with Systems Manager. Most often it just needs a minute or two after launch — re-run the tunnel. If it persists, the `AmazonSSMManagedInstanceCore` policy isn't attached to the bastion role: run `terraform apply -target=aws_iam_role_policy_attachment.bastion_ssm`, wait for `aws ssm describe-instance-information` to show the instance `Online`, then retry. (A phase-1 bootstrap that omitted this target is the usual cause — see [First Terraform apply](#6-first-terraform-apply).)
 - **`SessionManagerPlugin is not found`.** Install the [Session Manager plugin](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html) for the `aws` CLI.

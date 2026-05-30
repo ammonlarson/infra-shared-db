@@ -4,17 +4,18 @@
 #
 # RDS is private (publicly_accessible = false). The postgresql provider talks
 # to the local end of the SSM port-forward opened by scripts/db-tunnel.sh, not
-# to the RDS endpoint. The defaults are 127.0.0.1:5432, which is what the tunnel
-# maps by default — see the "Operator DB/Terraform access" section in README.md.
+# to the RDS endpoint. The defaults are 127.0.0.1:15432, which is what the
+# tunnel maps by default (15432 rather than 5432 to avoid colliding with a local
+# Postgres) — see the "Operator DB/Terraform access" section in README.md.
 #
 # Override these only if you forward RDS to a different local port (e.g. because
-# 5432 is taken by a local Postgres):
+# 15432 is also taken):
 #
-#   scripts/db-tunnel.sh 15432
-#   terraform plan -var='postgres_port=15432'   # or persist it here
+#   scripts/db-tunnel.sh 5432
+#   terraform plan -var='postgres_port=5432'   # or persist it here
 #
 # `terraform.tfvars` stays gitignored (`*.tfvars`); this `.example` is the
 # committed template.
 
 # postgres_host = "127.0.0.1"
-# postgres_port = 5432
+# postgres_port = 15432

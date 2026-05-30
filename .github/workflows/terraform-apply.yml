@@ -55,12 +55,12 @@ jobs:
 
       - name: Open SSM tunnel to RDS
         run: |
-          scripts/db-tunnel.sh 5432 "$AWS_REGION" > /tmp/tunnel.log 2>&1 &
+          scripts/db-tunnel.sh 15432 "$AWS_REGION" > /tmp/tunnel.log 2>&1 &
           echo "TUNNEL_PID=$!" >> "$GITHUB_ENV"
           # A bound local port only means the listener is up; pg_isready confirms
           # the forward actually reaches RDS before we hand off to Terraform.
           for _ in $(seq 1 30); do
-            if pg_isready -h 127.0.0.1 -p 5432 >/dev/null 2>&1; then
+            if pg_isready -h 127.0.0.1 -p 15432 >/dev/null 2>&1; then
               echo "tunnel reaches RDS"
               exit 0
             fi
