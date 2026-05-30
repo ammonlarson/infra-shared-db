@@ -49,7 +49,10 @@ Shared Postgres infrastructure for low-volume projects. One RDS instance hosts m
 ├── outputs.tf
 ├── variables.tf
 ├── README.md
-└── ADDING_A_PROJECT.md
+├── ADDING_A_PROJECT.md
+├── MIGRATING_AN_EXISTING_PROJECT.md
+├── SECRET_SCHEMA.md
+└── ...
 ```
 
 ## Prerequisites
@@ -356,6 +359,8 @@ Currently used by:
 - **Greenspace** — `greenspace_staging` (secret `rds/shared/greenspace_staging`) and `greenspace_prod` (secret `rds/shared/greenspace_prod`). Each environment's runtime sets `DB_SECRET_ID` to its own secret ID and is granted IAM access only to that ARN.
 
 The convention is enforced by the project name itself (which becomes the database, role, and secret), so the only place to add or remove a per-environment project is the list in `projects.tf` — same flow as any other project (see [ADDING_A_PROJECT.md](./ADDING_A_PROJECT.md)).
+
+Moving a repo that already runs on its own dedicated database onto shared-db (provision per-environment projects, add peering, cut over, then retire the old DB) is a bigger, two-repo dance — follow the runbook in [MIGRATING_AN_EXISTING_PROJECT.md](./MIGRATING_AN_EXISTING_PROJECT.md).
 
 ## Greenspace VPC peering (accepter side)
 
