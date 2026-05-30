@@ -192,6 +192,32 @@ jobs:
         if: ${{ env.TF_ACTION == 'apply' }}
         run: terraform apply -auto-approve
 
+      - name: Surface shared-db VPC outputs
+        # Read-only: pulls from the remote state, not RDS, so it runs after both
+        # plan and apply. Peer-VPC consumers (e.g. loppemarked) need these to wire
+        # requester-side VPC peering back to the shared-db VPC, which saves the
+        # operator from running `terraform output` by hand. Emits to the run log
+        # and the job summary; tolerates outputs not yet existing on a first plan.
+        run: |
+          vpc_id="$(terraform output -raw default_vpc_id 2>/dev/null || true)"
+          vpc_cidr="$(terraform output -raw default_vpc_cidr 2>/dev/null || true)"
+          echo "default_vpc_id=$vpc_id"
+          echo "default_vpc_cidr=$vpc_cidr"
+          {
+            echo "### Shared-db VPC outputs"
+            echo
+            if [ -n "$vpc_id" ] && [ -n "$vpc_cidr" ]; then
+              echo "For peer-VPC consumers wiring VPC peering back to the shared-db VPC:"
+              echo
+              echo "| Output | Value |"
+              echo "| --- | --- |"
+              echo "| \`default_vpc_id\` | \`$vpc_id\` |"
+              echo "| \`default_vpc_cidr\` | \`$vpc_cidr\` |"
+            else
+              echo "Outputs not present in state yet (nothing applied)."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Close SSM tunnel
         if: always()
         run: kill "$TUNNEL_PID" 2>/dev/null || true
