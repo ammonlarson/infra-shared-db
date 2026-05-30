@@ -15,7 +15,7 @@ data "aws_ssm_parameter" "bastion_ami" {
 
 resource "aws_security_group" "bastion" {
   name        = "shared-db-bastion"
-  description = "SSM bastion for shared RDS"
+  description = "SSM bastion for shared RDS (egress only)"
   vpc_id      = data.aws_vpc.default.id
 
   # Allow all egress. The SSM agent needs more than HTTPS to register: DNS
