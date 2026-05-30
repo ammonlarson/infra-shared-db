@@ -22,4 +22,5 @@ terraform.rc
 .DS_Store
 
 # Agents
+.agent/
 .agents/
