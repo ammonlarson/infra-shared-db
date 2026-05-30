@@ -339,6 +339,14 @@ RDS is **private** (`publicly_accessible = false`), so there is no public endpoi
 
 The earlier public-RDS + operator-`/32` model is gone (it was the source of the lockout trap in issue #6). The only inbound paths to RDS now are the bastion SG and the peered Greenspace VPC CIDRs.
 
+### Bastion OS patching
+
+The bastion is long-lived, so it can't rely on the AMI alone to stay patched: `data.aws_ssm_parameter.bastion_ami` only rolls the *desired* AMI forward on a future `terraform apply` — it never patches a running host. To close that gap, the instance's `user_data` installs and enables `dnf-automatic` configured for unattended **security** updates (`upgrade_type = security`, `apply_updates = yes`), so OS security fixes are applied daily with no operator involvement. This needs only the outbound HTTPS the bastion SG already allows — no new AWS resources or IAM.
+
+One AL2023 wrinkle matters here: AL2023 uses **deterministic upgrades**, pinning `releasever` to the version baked into the AMI, so a plain `dnf upgrade` (which `dnf-automatic` runs) would find nothing and the timer would be a no-op. The `user_data` therefore sets `/etc/dnf/vars/releasever` to `latest` so the bastion actually pulls published fixes. Dropping the frozen-package-set guarantee is fine here: the bastion is a stateless, recreatable `t4g.nano`, not an app host. It uses the generic `dnf-automatic.timer` (which honors `apply_updates` from the config), not the `dnf-automatic-install.timer` unit (which would override the config).
+
+`dnf-automatic` is set to `reboot = never` on purpose: a surprise reboot would drop an in-progress operator tunnel or `terraform apply`. Most security fixes (libraries, the SSM agent, OpenSSL, …) take effect without a reboot. The kernel/glibc updates that *do* need a reboot are picked up when the bastion is recreated — which already happens as the AMI SSM parameter rolls forward on the normal `terraform apply` cadence (or an operator can reboot it during a quiet window). Because `user_data` only runs on first boot, the instance is set to `user_data_replace_on_change = true`, so applying this change (and any later edit to the script) recreates the bastion cleanly rather than leaving a stale host. A recreate briefly interrupts tunnels — run it like any other bastion change, when no operator session is mid-flight.
+
 ## Per-environment projects
 
 Projects with multiple deployment environments (e.g. staging and production) get one shared-db project per environment, named `<project>_<env>`. Each environment gets its own database, role, and secret — never one shared database for both. This keeps environment data fully isolated and lets each environment's password rotate independently.

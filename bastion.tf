@@ -82,6 +82,38 @@ resource "aws_instance" "bastion" {
     encrypted   = true
   }
 
+  # OS patching: enable dnf-automatic for unattended *security* updates so this
+  # long-lived instance doesn't drift behind on OS fixes (the pinned AMI only
+  # rolls the desired image forward on a future apply, it doesn't patch a
+  # running host). reboot=never means an in-progress operator SSM tunnel or
+  # `terraform apply` is never dropped by a surprise reboot; the kernel/glibc
+  # fixes that do need a reboot land when the bastion is recreated as the AMI
+  # parameter rolls forward (a planned apply, not a surprise). user_data runs
+  # only on first boot, so user_data_replace_on_change recreates the instance
+  # when this script changes rather than leaving it stale.
+  user_data_replace_on_change = true
+  user_data                   = <<-EOT
+    #!/bin/bash
+    set -euo pipefail
+    # AL2023 pins releasever to the AMI's baked-in version (deterministic
+    # upgrades), so a plain `dnf upgrade` — which dnf-automatic runs — finds
+    # nothing and the timer would be a no-op. Track `latest` so dnf-automatic
+    # actually pulls published security fixes. Acceptable here: the bastion is a
+    # stateless, recreatable t4g.nano, not an app host that needs a frozen
+    # package set.
+    mkdir -p /etc/dnf/vars
+    echo latest > /etc/dnf/vars/releasever
+    dnf install -y dnf-automatic
+    # reboot=never is AL2023's default; set it explicitly so a future AMI
+    # default change can't reintroduce a surprise reboot.
+    sed -i \
+      -e 's/^upgrade_type = .*/upgrade_type = security/' \
+      -e 's/^apply_updates = .*/apply_updates = yes/' \
+      -e 's/^reboot = .*/reboot = never/' \
+      /etc/dnf/automatic.conf
+    systemctl enable --now dnf-automatic.timer
+  EOT
+
   tags = {
     Name = "shared-db-bastion"
   }
