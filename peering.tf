@@ -40,10 +40,10 @@ data "aws_vpc_peering_connection" "greenspace" {
   }
 }
 
-# Without accepter-side DNS resolution the public RDS endpoint resolves to
-# its public IP from the Greenspace VPC, which would then try to leave via
-# the (non-existent) NAT path. With this enabled, AWS resolves the endpoint
-# to the RDS private IP for queries originating in the peered VPC.
+# With accepter-side DNS resolution enabled, AWS resolves the RDS endpoint to
+# its private IP for queries originating in the peered VPC, so Greenspace's
+# Lambdas reach RDS over the peering link rather than trying to leave via the
+# (non-existent) NAT path.
 resource "aws_vpc_peering_connection_options" "greenspace" {
   for_each = local.greenspace_peering
 

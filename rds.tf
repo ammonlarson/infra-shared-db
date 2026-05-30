@@ -41,7 +41,7 @@ resource "aws_db_instance" "shared" {
   vpc_security_group_ids = [aws_security_group.rds.id]
 
   multi_az            = false
-  publicly_accessible = true
+  publicly_accessible = false
 
   backup_retention_period   = 7
   deletion_protection       = true

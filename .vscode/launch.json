@@ -9,6 +9,14 @@
       "command": "true",
       "cwd": "${workspaceFolder}",
       "internalConsoleOptions": "neverOpen"
+    },
+    {
+      "name": "Open DB tunnel",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "scripts/db-tunnel.sh",
+      "cwd": "${workspaceFolder}",
+      "internalConsoleOptions": "neverOpen"
     }
   ]
 }

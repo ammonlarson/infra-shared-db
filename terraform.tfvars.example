@@ -1,14 +1,21 @@
-# Copy this file to `terraform.tfvars` and fill in your operator IP.
+# Copy this file to `terraform.tfvars` only if you need to override the
+# defaults below. For the standard workflow you do NOT need a tfvars file at
+# all — the defaults already match the documented SSM tunnel.
 #
-# `terraform.tfvars` is gitignored on purpose — it contains the operator's
-# residential IP. `terraform.tfvars.example` is committed as a template.
+# RDS is private (publicly_accessible = false). The postgresql provider talks
+# to the local end of the SSM port-forward opened by scripts/db-tunnel.sh, not
+# to the RDS endpoint. The defaults are 127.0.0.1:15432, which is what the
+# tunnel maps by default (15432 rather than 5432 to avoid colliding with a local
+# Postgres) — see the "Operator DB/Terraform access" section in README.md.
 #
-# Why this exists: `var.allowed_ingress_cidrs` defaults to `[]`. Running
-# `terraform apply` without it (or without these values persisted) will
-# silently propose removing the operator's `/32` from the RDS security
-# group, locking the operator out of the database. Persisting the value
-# in this file removes that trap.
+# Override these only if you forward RDS to a different local port (e.g. because
+# 15432 is also taken):
 #
-# Update the value here and re-apply whenever your ISP rotates the lease.
+#   scripts/db-tunnel.sh 5432
+#   terraform plan -var='postgres_port=5432'   # or persist it here
+#
+# `terraform.tfvars` stays gitignored (`*.tfvars`); this `.example` is the
+# committed template.
 
-allowed_ingress_cidrs = ["203.0.113.10/32"]
+# postgres_host = "127.0.0.1"
+# postgres_port = 15432

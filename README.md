@@ -56,10 +56,10 @@ Shared Postgres infrastructure for low-volume projects. One RDS instance hosts m
 
 - AWS account with admin access (for one-time bootstrap only)
 - `aws` CLI configured locally
+- The [Session Manager plugin](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html) for the `aws` CLI. RDS is private; every `terraform plan`/`apply` that touches Postgres-level resources, and every `psql` session, goes through an SSM tunnel — see [Operator DB/Terraform access (SSM tunnel)](#operator-dbterraform-access-ssm-tunnel).
 - `terraform` >= 1.6
 - [`tflint`](https://github.com/terraform-linters/tflint) (used by the local pre-commit hook)
 - `gh` CLI (optional, for repo creation)
-- A local `terraform.tfvars` containing your operator IP (see [Operator IP and `terraform.tfvars`](#operator-ip-and-terraformtfvars) below). **Required for every `terraform plan` and `apply` — those run on your laptop, not in CI.**
 
 ## Contribution guidelines
 
@@ -83,8 +83,9 @@ The hooks installed:
   - `terraform init -backend=false` + `terraform validate`
 
   `terraform plan` is intentionally not in the hook: it requires AWS
-  credentials, network reachability to RDS, and the operator IP in
-  `allowed_ingress_cidrs`. CI runs `plan` on every PR.
+  credentials and an open SSM tunnel to the private RDS instance (see
+  [Operator DB/Terraform access](#operator-dbterraform-access-ssm-tunnel)).
+  The PR lint job never dials RDS.
 
   > The first commit after `install-hooks.sh` runs `terraform init -backend=false`,
   > which downloads the `aws` and `cyrilgdn/postgresql` providers (~30s, cached
@@ -122,31 +123,57 @@ docs: clarify local apply for Postgres-level changes
 The hook prints a targeted diagnostic on rejection (missing type, unclosed
 scope, missing colon, missing space, message too long, etc.).
 
-## Operator IP and `terraform.tfvars`
+## Operator DB/Terraform access (SSM tunnel)
 
-> **Read this before your first `terraform plan` or `apply`.** Skipping it will silently propose removing your own ingress CIDR.
+> **Read this before your first `terraform plan` or `apply`.** RDS is private — without an open tunnel, any plan that touches Postgres-level resources will hang or fail to connect.
 
-The RDS instance is `publicly_accessible = true`, gated only by a security group whose ingress list comes from `var.allowed_ingress_cidrs`. The variable defaults to `[]` (no ingress). That default is deliberate — committing a residential IP to the tracked source would be worse — but it means **any `terraform apply` that runs without the operator's `/32` will plan to remove the existing CIDR**, locking everyone (including you) out of the database.
+The RDS instance is `publicly_accessible = false`. There is no public endpoint and no IP allowlist to maintain; the only inbound path to Postgres is an always-on SSM **bastion** (`aws_instance.bastion`, a `t4g.nano` defined in `bastion.tf`). The bastion carries **no inbound security-group rules** — Session Manager works entirely over the agent's outbound connection — so nothing is exposed to the internet. This replaces the old residential-IP allowlist that issue #6 tracked; `var.allowed_ingress_cidrs` is gone.
 
-The fix is to persist the value in a gitignored `terraform.tfvars`:
+Because the `cyrilgdn/postgresql` provider has to reach Postgres to manage `postgresql_role` / `postgresql_database`, every `terraform plan`/`apply` once a project exists in state — and any manual `psql` — goes through a port-forward to the bastion. The provider defaults to `127.0.0.1:15432` (`var.postgres_host` / `var.postgres_port`), which is exactly what the tunnel maps.
+
+**Open the tunnel** (leave it running in its own terminal):
 
 ```bash
-cp terraform.tfvars.example terraform.tfvars
-# edit terraform.tfvars and replace the placeholder with your /32
-terraform plan
-terraform apply
+scripts/db-tunnel.sh           # maps localhost:15432 -> private RDS via the bastion
 ```
 
-`terraform.tfvars` is matched by `.gitignore` (`*.tfvars`); `terraform.tfvars.example` is whitelisted (`!*.tfvars.example`) and lives in the repo as a template.
+The script finds the bastion (by its `Name=shared-db-bastion` tag) and the RDS endpoint for you, then runs `aws ssm start-session ... AWS-StartPortForwardingSessionToRemoteHost`. Terraform also emits a ready-to-paste equivalent as the `db_tunnel_command` output.
 
-When your ISP rotates your IP:
+**Run Terraform / psql** against localhost in another terminal:
 
-1. Update `terraform.tfvars` with the new `/32`.
-2. `terraform apply` from your laptop. The plan should be a one-line `~ ingress` diff on `aws_security_group.rds` — only the `cidr_blocks` list changes.
+```bash
+terraform plan
+terraform apply
 
-### Why GitHub Actions doesn't run `terraform apply`
+# or connect directly:
+psql "host=127.0.0.1 port=15432 user=tfadmin dbname=postgres sslmode=require"
+```
 
-CI is a lint gate only. It runs `terraform fmt -check`, `terraform init`, and `terraform validate` — nothing that has to dial RDS. The reason `apply` (and `plan`) aren't in CI: only the operator's residential `/32` is in `allowed_ingress_cidrs`, the GHA runner's egress IP is not, so the `cyrilgdn/postgresql` provider can't refresh `postgresql_role` / `postgresql_database` from CI as soon as any project exists in state. Every `terraform plan` / `apply` runs from your laptop with `terraform.tfvars` populated. See [ADDING_A_PROJECT.md](./ADDING_A_PROJECT.md) for the project-change flow; AWS-only diffs use the same workflow.
+**Close it** when done: `Ctrl-C` in the tunnel terminal ends the session.
+
+The local port is `15432` (not `5432`) so it doesn't collide with a Postgres running on your laptop. If `15432` is also taken, forward to another port and tell Terraform:
+
+```bash
+scripts/db-tunnel.sh 5432
+terraform plan -var='postgres_port=5432'
+```
+
+You no longer need a `terraform.tfvars` for routine work — the defaults match the tunnel. `terraform.tfvars.example` remains as an optional template for the port override (it's whitelisted by `.gitignore`'s `!*.tfvars.example`).
+
+### What runs where
+
+| Task | Where it runs | Needs the tunnel? |
+| --- | --- | --- |
+| `fmt -check`, `init`, `validate` (lint gate) | CI on every PR/push (`terraform.yml`) | No — never dials RDS |
+| `terraform plan` / `apply` (laptop) | Operator laptop | Yes — open `scripts/db-tunnel.sh` first |
+| `terraform plan` / `apply` (CI) | `workflow_dispatch` job (`terraform-apply.yml`) | Yes — the job opens the tunnel on the runner |
+| `psql`, `pg_dump`, password rotation | Operator laptop | Yes |
+
+### Running plan/apply from CI
+
+Unlike before, CI **can** now refresh Postgres-level resources. The `Terraform apply (via SSM bastion)` workflow (`.github/workflows/terraform-apply.yml`) is a manual `workflow_dispatch` with a `plan`/`apply` choice. It authenticates via the existing GitHub OIDC role, installs the Session Manager plugin, opens the same SSM port-forward on the runner (so the provider reaches RDS at `127.0.0.1:15432`), then runs the chosen Terraform action.
+
+It is intentionally **not** wired to push/PR: applies stay a deliberate act. The bastion must already exist — it is bootstrapped operator-side (see [First Terraform apply](#6-first-terraform-apply)). Use this workflow for routine project-change applies; use a laptop tunnel for the initial bootstrap and anything interactive.
 
 If you want CI to deploy end-to-end, see option (B) or (C) in issue #6 — both lift this constraint, at the cost of more infra.
 
@@ -247,7 +274,7 @@ aws iam attach-role-policy \
 echo "Role ARN: arn:aws:iam::${ACCOUNT_ID}:role/${ROLE_NAME}"
 ```
 
-The policy in `policies/gha-terraform-shared-db.json` is scoped to the actions this repo's Terraform actually performs: the state bucket, lock table, RDS instance and subnet group, the VPC security group, and Secrets Manager entries under `rds/shared/`. The state-backend and Secrets Manager statements pin the bucket, table, and account/region by ARN — edit those if you used different names in step 1.
+The policy in `policies/gha-terraform-shared-db.json` is scoped to the actions this repo's Terraform actually performs: the state bucket, lock table, RDS instance and subnet group, the VPC security groups, Secrets Manager entries under `rds/shared/`, the SSM bastion (EC2 instance lifecycle, its `shared-db-bastion` IAM role + instance profile, and the AL2023 AMI SSM parameter), and the `ssm:StartSession` port-forward used to reach RDS from the CI apply workflow. The state-backend, Secrets Manager, and IAM statements pin the bucket, table, and account/region by ARN — edit those if you used different names in step 1.
 
 If CI later fails on a missing AWS API permission, add the specific action to the policy rather than reattaching `PowerUserAccess`.
 
@@ -273,32 +300,44 @@ Edit `.github/workflows/terraform.yml` and set the `role-to-assume` value to the
 
 ### 6. First Terraform apply
 
-Run from your laptop. The first apply creates the RDS instance and the master secret.
+Run from your laptop. Because the `postgresql` provider can only reach the private RDS through the bastion tunnel, the bastion has to exist *before* any `postgresql_role` / `postgresql_database` is created. So the first apply is two phases: bring up the AWS-level resources (RDS and the bastion, plus their security groups and IAM) with a targeted apply that never invokes the Postgres provider, then open the tunnel and apply the rest (the master secret and each project's database/role).
 
 ```bash
-cp terraform.tfvars.example terraform.tfvars
-# edit terraform.tfvars: set allowed_ingress_cidrs to your /32
 terraform init
-terraform plan
+
+# 1. Create the AWS-level resources only. No postgresql_* resource is targeted,
+#    so the provider stays idle and needs no tunnel. The policy attachment must
+#    be targeted explicitly: -target pulls in a resource's dependencies but not
+#    its dependents, and the bastion instance only references the instance
+#    profile — without this the SSM agent can't register (TargetNotConnected).
+terraform apply \
+  -target=aws_db_instance.shared \
+  -target=aws_instance.bastion \
+  -target=aws_iam_role_policy_attachment.bastion_ssm
+
+# 2. Open the tunnel through the new bastion (leave it running).
+scripts/db-tunnel.sh   # in a second terminal
+
+# 3. Full apply: creates each project's database/role through the tunnel.
 terraform apply
 ```
 
-`terraform.tfvars` is gitignored — see [Operator IP and `terraform.tfvars`](#operator-ip-and-terraformtfvars) for the full workflow and why this matters for every subsequent apply.
+The same two-phase sequence migrates an existing **public-RDS** state to this model: phase 1 creates the bastion (and flips `publicly_accessible` to `false`); after the tunnel is up, phase 3 swaps the RDS SG to the bastion source and refreshes the Postgres resources. Every routine apply afterward is just "open the tunnel, `terraform apply`" — see [Operator DB/Terraform access](#operator-dbterraform-access-ssm-tunnel).
 
 ## CI/CD
 
-CI is a lint gate, not a deployer. Every PR (and every push to `main`) runs `terraform fmt -check -recursive`, `terraform init`, and `terraform validate`. AWS auth is OIDC-only; the role exists so `init` can read the S3 backend.
+Two workflows:
 
-`terraform plan` and `terraform apply` are operator-side, not CI-side — see [Why GitHub Actions doesn't run `terraform apply`](#why-github-actions-doesnt-run-terraform-apply).
+- **`terraform.yml` — lint gate.** Every PR (and every push to `main`) runs `terraform fmt -check -recursive`, `terraform init`, and `terraform validate`. It never dials RDS. AWS auth is OIDC-only; the role exists so `init` can read the S3 backend.
+- **`terraform-apply.yml` — apply via bastion.** A manual `workflow_dispatch` (`plan`/`apply` choice) that opens the SSM tunnel on the runner and runs the chosen action, so CI can refresh `postgresql_role` / `postgresql_database` when appropriate. See [Running plan/apply from CI](#running-planapply-from-ci).
+
+Laptop runs and the CI apply workflow both reach RDS the same way — through the bastion tunnel. The lint gate is the only thing that runs unconditionally on every change.
 
 ## Network access caveats
 
-The `postgresql` provider needs network reachability to RDS to manage databases and roles. Two paths:
+RDS is **private** (`publicly_accessible = false`), so there is no public endpoint and no IP allowlist. The `postgresql` provider reaches Postgres through an SSM port-forward to the always-on bastion (`bastion.tf`); operators use `scripts/db-tunnel.sh`, and the CI apply workflow opens the same tunnel on the runner. The bastion has no inbound SG rules — Session Manager is outbound-only — and gets a public IP solely so its SSM agent can reach the SSM endpoints via the default VPC's internet gateway (cheaper than a NAT gateway or SSM interface VPC endpoints, and it does not expose RDS).
 
-- **Public RDS, restricted SG (default).** `publicly_accessible = true` with a security group locked to `var.allowed_ingress_cidrs`. The SG is the firewall. Today the allowlist holds only the operator's residential `/32` (see [Operator IP and `terraform.tfvars`](#operator-ip-and-terraformtfvars)), which is why all `terraform plan` and `apply` runs are operator-side — CI couldn't refresh Postgres-level resources from the GHA runner's IP.
-- **Private RDS.** Set `publicly_accessible = false` and run Postgres-level applies from inside the VPC (bastion, SSM tunnel, or self-hosted GHA runner).
-
-For a single-operator side-project setup, public + restricted SG is simpler and equally safe. Switch to private only if compliance requires it.
+The earlier public-RDS + operator-`/32` model is gone (it was the source of the lockout trap in issue #6). The only inbound paths to RDS now are the bastion SG and the peered Greenspace VPC CIDRs.
 
 ## Per-environment projects
 
@@ -312,12 +351,12 @@ The convention is enforced by the project name itself (which becomes the databas
 
 ## Greenspace VPC peering (accepter side)
 
-Greenspace's API Lambdas run in private subnets with no NAT, so they can't reach the public RDS endpoint over the internet. Each Greenspace environment instead opens a same-account VPC peering connection from its VPC to the shared RDS default VPC. Greenspace owns the **requester** side of the peering (created with `auto_accept = true` and `requester.allow_remote_vpc_dns_resolution = true`); this repo owns the **accepter** side, defined in `peering.tf`:
+Greenspace's API Lambdas run in private subnets with no NAT, so they can't reach RDS over the internet — and with RDS now private there is no public endpoint to reach anyway. Each Greenspace environment instead opens a same-account VPC peering connection from its VPC to the shared RDS default VPC. Greenspace owns the **requester** side of the peering (created with `auto_accept = true` and `requester.allow_remote_vpc_dns_resolution = true`); this repo owns the **accepter** side, defined in `peering.tf`:
 
 - `data "aws_vpc_peering_connection"` discovers each peering by the `Name` tag Greenspace sets (`greenspace-staging-2026-shared-db-peering`, `greenspace-prod-2026-shared-db-peering`), constrained to active peerings whose accepter VPC is the shared-RDS default VPC.
-- `aws_vpc_peering_connection_options` sets `accepter.allow_remote_vpc_dns_resolution = true` so the public RDS endpoint resolves to the RDS private IP for queries originating in the peered VPC.
+- `aws_vpc_peering_connection_options` sets `accepter.allow_remote_vpc_dns_resolution = true` so the RDS endpoint resolves to its private IP for queries originating in the peered VPC.
 - `aws_route` adds the Greenspace VPC CIDR to the default VPC's main route table via the peering connection.
-- The Greenspace VPC CIDRs (`10.0.0.0/16` staging, `10.1.0.0/16` prod) are added to the inline `ingress` block on `aws_security_group.rds` (`network.tf`) via `concat(var.allowed_ingress_cidrs, [for v in local.greenspace_peering : v.vpc_cidr])`. AWS treats each `cidr_blocks` entry as a separate ingress rule on the SG, so revoking just the staging CIDR is a one-line edit and a single API call — the prod CIDR and operator `/32`s stay in place.
+- The Greenspace VPC CIDRs (`10.0.0.0/16` staging, `10.1.0.0/16` prod) populate a dedicated `ingress` block on `aws_security_group.rds` (`network.tf`) via `[for v in local.greenspace_peering : v.vpc_cidr]`, alongside the separate bastion-SG ingress. AWS treats each `cidr_blocks` entry as a separate ingress rule on the SG, so revoking just the staging CIDR is a one-line edit and a single API call — the prod CIDR stays in place.
 
 To add a third environment, add an entry to the `local.greenspace_peering` map in `peering.tf`. The peering data source, options, route, and the inline SG ingress all read from that map (the SG ingress via `concat(...)` over the map's CIDRs), so a one-line edit picks up everywhere.
 
@@ -358,6 +397,8 @@ Minimal IAM policy for the project's runtime role:
 
 ## Operations
 
+> All of these reach Postgres, so open the SSM tunnel first (`scripts/db-tunnel.sh`) — see [Operator DB/Terraform access](#operator-dbterraform-access-ssm-tunnel). The `terraform apply` operations need it because the provider refreshes Postgres state; `pg_dump` needs it because RDS is private.
+
 ### Rotate a project's password
 
 ```bash
@@ -378,12 +419,12 @@ This forces a brief RDS modification. Plan during a maintenance window if any pr
 
 ### Take a per-project backup
 
+With the tunnel open (`scripts/db-tunnel.sh`), connect through localhost — RDS has no public endpoint:
+
 ```bash
-HOST=$(aws secretsmanager get-secret-value --secret-id rds/shared/master \
-  --query 'SecretString' --output text | jq -r '.host')
 PGPASSWORD=$(aws secretsmanager get-secret-value --secret-id rds/shared/master \
   --query 'SecretString' --output text | jq -r '.password') \
-pg_dump -h $HOST -U tfadmin -d proj_a -f proj_a.sql
+pg_dump -h 127.0.0.1 -p 15432 -U tfadmin -d proj_a -f proj_a.sql
 ```
 
 RDS automated snapshots also run nightly with 7-day retention.
@@ -394,7 +435,11 @@ See [ADDING_A_PROJECT.md](./ADDING_A_PROJECT.md#removing-a-project).
 
 ## Troubleshooting
 
-- **`terraform apply` proposes removing your CIDR from `aws_security_group.rds`.** You ran without `terraform.tfvars` (or the file is missing/empty). Don't apply — populate the file first. See [Operator IP and `terraform.tfvars`](#operator-ip-and-terraformtfvars).
+- **`terraform plan`/`apply` hangs or errors connecting to Postgres (`dial tcp 127.0.0.1:15432: connect: connection refused`, or a timeout).** The SSM tunnel isn't open. Run `scripts/db-tunnel.sh` in another terminal first. See [Operator DB/Terraform access](#operator-dbterraform-access-ssm-tunnel).
+- **`pq: SSL is not enabled on the server` connecting to `127.0.0.1`.** The provider reached a *different* Postgres than RDS (RDS supports SSL) — almost always a Postgres on your laptop occupying the tunnel's local port, so the forward never bound and the provider fell through to the local server. The default local port is `15432` to avoid this; if you have something on `15432` too, forward elsewhere: `scripts/db-tunnel.sh 5432` then `terraform apply -var='postgres_port=5432'`.
+- **`scripts/db-tunnel.sh` fails with `no running 'shared-db-bastion' instance found`.** The bastion hasn't been created yet (or was stopped/terminated). On a fresh state, run `terraform apply` once to create it; when migrating an existing state, use the targeted bootstrap apply in [First Terraform apply](#6-first-terraform-apply).
+- **`StartSession` fails with `TargetNotConnected` / `<instance-id> is not connected`.** The bastion's SSM agent hasn't registered with Systems Manager. Most often it just needs a minute or two after launch — re-run the tunnel. If it persists, the `AmazonSSMManagedInstanceCore` policy isn't attached to the bastion role: run `terraform apply -target=aws_iam_role_policy_attachment.bastion_ssm`, wait for `aws ssm describe-instance-information` to show the instance `Online`, then retry. (A phase-1 bootstrap that omitted this target is the usual cause — see [First Terraform apply](#6-first-terraform-apply).)
+- **`SessionManagerPlugin is not found`.** Install the [Session Manager plugin](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html) for the `aws` CLI.
 - **`terraform plan` errors on `data.aws_vpc_peering_connection.greenspace` with `no matching VPC peering connection found`.** The peering connections in `peering.tf` are created by the Greenspace repo, not this one. Until the Greenspace operator populates `shared_db_vpc_id` in `infra/terraform/environments/{staging,prod}/main.tf` and runs `terraform apply`, the data sources have nothing to find — and that blocks every `terraform plan` in this repo, including unrelated project changes. See [Greenspace VPC peering (accepter side)](#greenspace-vpc-peering-accepter-side).
 - **`role already exists` on first apply.** The `postgresql` provider can race during the very first apply when both the database and role are new. Re-run `terraform apply`.
 - **`InvalidLocationConstraint` creating the state bucket.** You're in `us-east-1`; drop the `--create-bucket-configuration` flag.
