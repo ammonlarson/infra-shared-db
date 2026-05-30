@@ -93,7 +93,7 @@ The exact JSON field names (`database`, `host`, `password`, `port`, `username`) 
 
 ## 6. Verify the live secret payload before merging
 
-Before merging the consumer PR, check the live payload against the contract for **every** environment the consumer targets. Run [`scripts/verify-secret-shape.sh`](./scripts/verify-secret-shape.sh) — it fetches the secret, validates it against [`schemas/secret.schema.json`](./schemas/secret.schema.json), and exits non-zero on mismatch, so it can run in the consumer's CI/deploy pipeline instead of being eyeballed:
+Before merging the consumer PR, check the live payload against the contract for **every** environment the consumer targets. Run [`scripts/verify-secret-shape.sh`](./scripts/verify-secret-shape.sh) — it fetches the secret and checks that every required field in [`schemas/secret.schema.json`](./schemas/secret.schema.json) is present with the correct JSON type, exiting non-zero on mismatch, so it can run in the consumer's CI/deploy pipeline instead of being eyeballed:
 
 ```bash
 scripts/verify-secret-shape.sh rds/shared/<name> <aws-region>

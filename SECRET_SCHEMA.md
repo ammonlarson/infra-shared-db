@@ -34,7 +34,7 @@ The `SecretString` is a JSON object with exactly the following keys:
 | `database` | `string` | Stable contract  | Yes      | Postgres database name (matches the project name).            |
 | `host`     | `string` | Stable contract  | Yes      | RDS endpoint hostname (e.g. `shared-postgres.<id>.<region>.rds.amazonaws.com`). |
 | `password` | `string` | Stable contract  | Yes      | Password for `username`. Rotates when the operator runs `terraform taint` on the project's `random_password.app`. |
-| `port`     | `number` | Stable contract  | Yes      | TCP port (currently `5432`). JSON `number`, not a string.     |
+| `port`     | `integer` | Stable contract | Yes      | TCP port (currently `5432`). A JSON `number` (integer), not a string. |
 | `username` | `string` | Stable contract  | Yes      | Login role name. Always `<project>_app` for per-project secrets; `tfadmin` for the master secret. |
 
 All five fields above are part of the **stable consumer contract**: a

@@ -5,8 +5,14 @@
 #
 # This is the non-manual replacement for the "aws ... | jq 'keys'" eyeball
 # check in ADDING_A_PROJECT.md and SECRET_SCHEMA.md. It is safe to call from a
-# consumer's deploy pipeline or CI: every required field is checked for presence
-# and correct JSON type, and the script exits non-zero on any mismatch.
+# consumer's deploy pipeline or CI: the payload must be a JSON object in which
+# every required field is present with the correct JSON type, and the script
+# exits non-zero on any mismatch.
+#
+# Scope: this checks the schema's "required" set and each required field's JSON
+# type. It is not a full JSON-Schema validator (it does not enforce keyword
+# constraints such as port's minimum/maximum), since no validator is installed.
+# For strict validation, point a JSON-Schema tool at schemas/secret.schema.json.
 #
 # Optional / implementation-detail fields are allowed: only the stable contract
 # fields (the schema's "required" set) are enforced, so a payload that grows new
@@ -36,7 +42,7 @@ die() {
 }
 
 usage() {
-  sed -n '3,33p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '/^# Verify that/,/^# --stdin)\.$/p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   exit "${1:-0}"
 }
 
@@ -62,27 +68,32 @@ else
   source_desc="$secret_id ($region)"
 fi
 
-printf '%s' "$payload" | jq -e . >/dev/null 2>&1 \
+printf '%s' "$payload" | jq empty >/dev/null 2>&1 \
   || die "payload for $source_desc is not valid JSON"
 
 # Validate the payload against the schema's required fields and their types.
+# A non-object payload is reported as a problem rather than crashing on `has`.
 # jq reports "number" for both integer and number, so map those before compare.
 problems="$(
   printf '%s' "$payload" | jq -r --slurpfile schema "$SCHEMA_FILE" '
     ($schema[0]) as $s
     | . as $p
-    | $s.required[]
-    | . as $k
-    | if ($p | has($k) | not)
-      then "missing required field: \($k)"
+    | if ($p | type) != "object"
+      then "payload is a JSON \($p | type), expected an object"
       else
-        ($s.properties[$k].type) as $want_raw
-        | (if $want_raw == "integer" or $want_raw == "number"
-           then "number" else $want_raw end) as $want
-        | ($p[$k] | type) as $got
-        | if $got != $want
-          then "field \($k): expected \($want_raw), got \($got)"
-          else empty end
+        $s.required[]
+        | . as $k
+        | if ($p | has($k) | not)
+          then "missing required field: \($k)"
+          else
+            ($s.properties[$k].type) as $want_raw
+            | (if $want_raw == "integer" or $want_raw == "number"
+               then "number" else $want_raw end) as $want
+            | ($p[$k] | type) as $got
+            | if $got != $want
+              then "field \($k): expected \($want_raw), got \($got)"
+              else empty end
+          end
       end
   '
 )"
