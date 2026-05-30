@@ -17,6 +17,14 @@
       "command": "scripts/db-tunnel.sh",
       "cwd": "${workspaceFolder}",
       "internalConsoleOptions": "neverOpen"
+    },
+    {
+      "name": "Start bastion session",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "aws ssm start-session --target $(terraform output -raw bastion_instance_id) --region eu-north-1",
+      "cwd": "${workspaceFolder}",
+      "internalConsoleOptions": "neverOpen"
     }
   ]
 }
