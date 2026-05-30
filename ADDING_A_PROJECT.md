@@ -2,6 +2,12 @@
 
 When a new project needs a database, do this.
 
+> **Migrating an existing repo off its own dedicated DB?** This page is the
+> greenfield happy path. If the consumer already runs on a dedicated database
+> and you're moving it onto shared-db (provision, peer, cut over, retire the old
+> DB), follow [`MIGRATING_AN_EXISTING_PROJECT.md`](./MIGRATING_AN_EXISTING_PROJECT.md)
+> instead — it wraps these mechanics in the full two-repo migration sequence.
+
 > **Heads-up:** RDS is private. Any `terraform plan`/`apply` that touches Postgres-level resources needs an open SSM tunnel to the bastion — start `scripts/db-tunnel.sh` first. You can run plan/apply from your laptop (through the tunnel) or via the manual `Terraform apply (via SSM bastion)` CI workflow, which opens the tunnel on the runner. The PR lint gate (`fmt`/`init`/`validate`) never deploys. See [Operator DB/Terraform access](./README.md#operator-dbterraform-access-ssm-tunnel) in `README.md`.
 
 ## 1. Pick a name

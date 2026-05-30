@@ -161,6 +161,9 @@ coordinated with every consumer.
 
 - [`ADDING_A_PROJECT.md`](./ADDING_A_PROJECT.md) — wiring a project's
   runtime to its secret, including the pre-merge verification step.
+- [`MIGRATING_AN_EXISTING_PROJECT.md`](./MIGRATING_AN_EXISTING_PROJECT.md) —
+  end-to-end runbook for moving an existing consumer repo off its dedicated DB
+  onto shared-db; the `database` vs `dbname` check is one of its gated steps.
 - [`README.md`](./README.md#connecting-from-a-project-repo) — example
   Python that reads the secret and builds a `DATABASE_URL`.
 - [`schemas/secret.schema.json`](./schemas/secret.schema.json) — the
