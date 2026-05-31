@@ -366,6 +366,7 @@ Projects with multiple deployment environments (e.g. staging and production) get
 Currently used by:
 
 - **Greenspace** — `greenspace_staging` (secret `rds/shared/greenspace_staging`) and `greenspace_prod` (secret `rds/shared/greenspace_prod`). Each environment's runtime sets `DB_SECRET_ID` to its own secret ID and is granted IAM access only to that ARN.
+- **Loppemarked** — `loppemarked_staging` (secret `rds/shared/loppemarked_staging`) and `loppemarked_prod` (secret `rds/shared/loppemarked_prod`). Same convention: per-environment secret, IAM scoped to its own ARN.
 
 The convention is enforced by the project name itself (which becomes the database, role, and secret), so the only place to add or remove a per-environment project is the list in `projects.tf` — same flow as any other project (see [ADDING_A_PROJECT.md](./ADDING_A_PROJECT.md)).
 
@@ -381,6 +382,8 @@ Greenspace's API Lambdas run in private subnets with no NAT, so they can't reach
 - The Greenspace VPC CIDRs (`10.0.0.0/16` staging, `10.1.0.0/16` prod) populate a dedicated `ingress` block on `aws_security_group.rds` (`network.tf`) via `[for v in local.greenspace_peering : v.vpc_cidr]`, alongside the separate bastion-SG ingress. AWS treats each `cidr_blocks` entry as a separate ingress rule on the SG, so revoking just the staging CIDR is a one-line edit and a single API call — the prod CIDR stays in place.
 
 To add a third environment, add an entry to the `local.greenspace_peering` map in `peering.tf`. The peering data source, options, route, and the inline SG ingress all read from that map (the SG ingress via `concat(...)` over the map's CIDRs), so a one-line edit picks up everywhere.
+
+**A second consumer (Loppemarked)** uses an analogous `local.loppemarked_peering` map in `peering.tf` with its own `data`/`options`/`route` resources and a dedicated `aws_security_group.rds` ingress block. Loppemarked's VPC CIDRs (`10.2.0.0/16` staging, `10.3.0.0/16` prod) are deliberately distinct from Greenspace's `10.0.0.0/16` / `10.1.0.0/16` — peered VPCs that route into the same shared default VPC need non-overlapping CIDRs so their per-CIDR routes don't collide in the main route table. Its peering `Name` tags follow the same convention: `loppemarked-staging-2026-shared-db-peering`, `loppemarked-prod-2026-shared-db-peering`.
 
 **Operator sequencing:** the data source for the peering connection fails to plan until Greenspace has applied. When the two repos move together, apply Greenspace first (which creates the peerings), then apply this repo (which configures the accepter side). This repo's PR can be reviewed and merged at any time — CI's lint gate doesn't dial AWS — but `terraform plan` and `apply` will only succeed after the Greenspace apply lands.
 
