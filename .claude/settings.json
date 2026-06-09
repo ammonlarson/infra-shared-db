@@ -38,10 +38,13 @@
       "Bash(npm run dev:*)",
       "Bash(npm run build:*)",
       "Bash(npm run lint:*)",
+      "Bash(npm run format:*)",
       "Bash(npm run preview:*)",
+      "Bash(npm run test:*)",
       "Bash(npm test:*)",
       "Bash(npx eslint:*)",
       "Bash(npx playwright:*)",
+      "Bash(npx prettier:*)",
       "Bash(printf:*)",
       "Bash(pyright:*)",
       "Bash(pytest:*)",
@@ -62,9 +65,13 @@
       "mcp__linear__*",
       "mcp__claude_ai_Linear__*",
       "mcp__context7__*",
+      "mcp__github__*",
+      "mcp__plugin_github_github__*",
       "mcp__ide__*",
+      "mcp__playwright__*",
+      "mcp__plugin_playwright_playwright__*",
       "mcp__plugin_linear_linear__*",
-      "mcp__pluginn_mcp_context7__*",
+      "mcp__plugin_mcp_context7__*",
       "mcp__sequential-thinking__*",
       "Edit",
       "Read",
@@ -73,11 +80,7 @@
       "Read(//tmp/**)",
       "Write(//tmp/**)"
     ],
-    "deny": [
-      "Bash(mkdir -p /Users/ammonl/.claude/agent-memory/pr-reviewer)",
-      "Write(//Users/ammonl/.claude/agent-memory/**)",
-      "Edit(//Users/ammonl/.claude/agent-memory/**)"
-    ],
+    "deny": [],
     "defaultMode": "acceptEdits"
   },
   "hooks": {
