@@ -11,11 +11,9 @@ on:
     branches: [main]
 
 permissions:
-  id-token: write
   contents: read
 
 env:
-  AWS_REGION: eu-north-1
   TF_VERSION: 1.10.0
 
 jobs:
@@ -25,11 +23,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::266535567738:role/gha-terraform-shared-db
-          aws-region: ${{ env.AWS_REGION }}
-
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
@@ -37,8 +30,10 @@ jobs:
       - name: Terraform fmt
         run: terraform fmt -check -recursive
 
+      # Backend-less init: validate doesn't need state, so the lint gate
+      # needs no AWS credentials.
       - name: Terraform init
-        run: terraform init
+        run: terraform init -backend=false
 
       - name: Terraform validate
         run: terraform validate

@@ -168,7 +168,7 @@ You no longer need a `terraform.tfvars` for routine work — the defaults match 
 
 | Task | Where it runs | Needs the tunnel? |
 | --- | --- | --- |
-| `fmt -check`, `init`, `validate` (lint gate) | CI on every PR/push (`terraform-lint.yml`) | No — never dials RDS |
+| `fmt -check`, `init -backend=false`, `validate` (lint gate) | CI on every PR/push (`terraform-lint.yml`) | No — never dials RDS or AWS |
 | `terraform plan` / `apply` (laptop) | Operator laptop | Yes — open `scripts/db-tunnel.sh` first |
 | `terraform plan` (CI, PRs) | `terraform-apply.yml` on PRs to `main` (Terraform-relevant paths) | Yes — the job opens the tunnel on the runner |
 | `terraform apply` (CI, auto) | `terraform-apply.yml` on push to `main` (Terraform-relevant paths) | Yes — the job opens the tunnel on the runner |
@@ -306,7 +306,7 @@ terraform {
 
 ### 5. Configure the GHA role ARN
 
-Edit `.github/workflows/terraform-lint.yml` and `.github/workflows/terraform-apply.yml` and set the `role-to-assume` value in each to the ARN printed in step 3.
+Edit `.github/workflows/terraform-apply.yml` and set the `role-to-assume` value to the ARN printed in step 3. (The lint workflow runs `terraform init -backend=false` and needs no AWS role.)
 
 ### 6. First Terraform apply
 
@@ -338,7 +338,7 @@ The same two-phase sequence migrates an existing **public-RDS** state to this mo
 
 Two workflows:
 
-- **`terraform-lint.yml` — lint gate.** Every PR (and every push to `main`) runs `terraform fmt -check -recursive`, `terraform init`, and `terraform validate`. It never dials RDS. AWS auth is OIDC-only; the role exists so `init` can read the S3 backend.
+- **`terraform-lint.yml` — lint gate.** Every PR (and every push to `main`) runs `terraform fmt -check -recursive`, `terraform init -backend=false`, and `terraform validate`. It never dials RDS or AWS — backend init is skipped, so the job needs no credentials at all.
 - **`terraform-apply.yml` — plan / apply via bastion.** Opens the SSM tunnel on the runner and runs Terraform so CI can refresh `postgresql_role` / `postgresql_database`. It runs `terraform plan` on pull requests to `main` (the authoritative diff for review — plan only, never apply), `terraform apply` automatically on push to `main` when Terraform-relevant files change (serialized by a `concurrency` group), and a manual `workflow_dispatch` (`plan`/`apply` choice) for ad hoc runs. See [Running plan/apply from CI](#running-planapply-from-ci).
 
 The bastion workflow is **gated on the lint gate**: a `wait-for-lint` job blocks the plan/apply job until `terraform-lint.yml` finishes successfully for the same change (matched by head SHA + event). If lint fails, the plan/apply job is skipped; if lint is still running, the apply workflow waits rather than racing ahead. Manual `workflow_dispatch` runs skip the wait (they aren't tied to a lint run).
