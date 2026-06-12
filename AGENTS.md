@@ -3,7 +3,7 @@
 - **Ticket Provider**: GitHub Issues
 - **Branch Format**: `<type>/<ticket-number>` (e.g., `feature/123`)
 - **Main Branch**: `main`
-- **Designated Assigneed(s)**: @ammonl
+- **Designated Assignee(s)**: @ammonl
 
 ## What this repo is
 
