@@ -36,6 +36,23 @@ locals {
       vpc_cidr         = "10.3.0.0/16"
     }
   }
+
+  # un17-resources follows the same accepter-side pattern as Greenspace and
+  # Loppemarked: it owns the requester side (auto_accept + requester DNS
+  # resolution) and tags each peering with the Name below; this repo discovers
+  # them by tag and configures the accepter side. Its VPC CIDRs (10.4/10.5) are
+  # distinct from Greenspace (10.0/10.1) and Loppemarked (10.2/10.3) so the
+  # per-CIDR routes don't collide in the shared default VPC's route table.
+  un17_resources_peering = {
+    staging = {
+      peering_tag_name = "un17-resources-staging-2026-shared-db-peering"
+      vpc_cidr         = "10.4.0.0/16"
+    }
+    prod = {
+      peering_tag_name = "un17-resources-prod-2026-shared-db-peering"
+      vpc_cidr         = "10.5.0.0/16"
+    }
+  }
 }
 
 data "aws_vpc_peering_connection" "greenspace" {
@@ -114,4 +131,41 @@ resource "aws_route" "loppemarked" {
   route_table_id            = data.aws_route_table.default_main.id
   destination_cidr_block    = each.value.vpc_cidr
   vpc_peering_connection_id = data.aws_vpc_peering_connection.loppemarked[each.key].id
+}
+
+data "aws_vpc_peering_connection" "un17_resources" {
+  for_each = local.un17_resources_peering
+
+  filter {
+    name   = "tag:Name"
+    values = [each.value.peering_tag_name]
+  }
+
+  filter {
+    name   = "status-code"
+    values = ["active"]
+  }
+
+  filter {
+    name   = "accepter-vpc-info.vpc-id"
+    values = [data.aws_vpc.default.id]
+  }
+}
+
+resource "aws_vpc_peering_connection_options" "un17_resources" {
+  for_each = local.un17_resources_peering
+
+  vpc_peering_connection_id = data.aws_vpc_peering_connection.un17_resources[each.key].id
+
+  accepter {
+    allow_remote_vpc_dns_resolution = true
+  }
+}
+
+resource "aws_route" "un17_resources" {
+  for_each = local.un17_resources_peering
+
+  route_table_id            = data.aws_route_table.default_main.id
+  destination_cidr_block    = each.value.vpc_cidr
+  vpc_peering_connection_id = data.aws_vpc_peering_connection.un17_resources[each.key].id
 }
