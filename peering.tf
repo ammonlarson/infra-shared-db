@@ -45,11 +45,11 @@ locals {
   # per-CIDR routes don't collide in the shared default VPC's route table.
   un17_resources_peering = {
     staging = {
-      peering_tag_name = "un17-resources-staging-2026-shared-db-peering"
+      peering_tag_name = "un17-resources-staging-shared-db-peering"
       vpc_cidr         = "10.4.0.0/16"
     }
     prod = {
-      peering_tag_name = "un17-resources-prod-2026-shared-db-peering"
+      peering_tag_name = "un17-resources-prod-shared-db-peering"
       vpc_cidr         = "10.5.0.0/16"
     }
   }
