@@ -57,6 +57,17 @@ resource "aws_security_group" "rds" {
     cidr_blocks = [for v in local.loppemarked_peering : v.vpc_cidr]
   }
 
+  # un17-resources' peered VPCs reach RDS over their own peering links, same as
+  # the other consumers. Kept as a separate ingress block so its CIDRs can be
+  # revoked independently of Greenspace's and Loppemarked's.
+  ingress {
+    description = "Postgres from peered un17-resources VPCs"
+    from_port   = 5432
+    to_port     = 5432
+    protocol    = "tcp"
+    cidr_blocks = [for v in local.un17_resources_peering : v.vpc_cidr]
+  }
+
   egress {
     from_port   = 0
     to_port     = 0

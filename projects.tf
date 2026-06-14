@@ -6,6 +6,8 @@ locals {
     "greenspace_prod",
     "loppemarked_staging",
     "loppemarked_prod",
+    "un17_resources_staging",
+    "un17_resources_prod",
   ]
 }
 
