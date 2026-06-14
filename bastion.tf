@@ -87,10 +87,12 @@ resource "aws_instance" "bastion" {
   # rolls the desired image forward on a future apply, it doesn't patch a
   # running host). reboot=never means an in-progress operator SSM tunnel or
   # `terraform apply` is never dropped by a surprise reboot; the kernel/glibc
-  # fixes that do need a reboot land when the bastion is recreated as the AMI
-  # parameter rolls forward (a planned apply, not a surprise). user_data runs
-  # only on first boot, so user_data_replace_on_change recreates the instance
-  # when this script changes rather than leaving it stale.
+  # fixes that do need a reboot land when the bastion is deliberately recreated
+  # — `ami` is ignored (see the lifecycle block below), so picking up a newer
+  # image is an explicit `terraform apply -replace`, never a surprise dragged in
+  # by an unrelated apply. user_data runs only on first boot, so
+  # user_data_replace_on_change recreates the instance when this script changes
+  # rather than leaving it stale.
   user_data_replace_on_change = true
   user_data                   = <<-EOT
     #!/bin/bash
@@ -113,6 +115,20 @@ resource "aws_instance" "bastion" {
       /etc/dnf/automatic.conf
     systemctl enable --now dnf-automatic.timer
   EOT
+
+  # The AMI comes from a floating SSM parameter (latest AL2023 arm64), so its
+  # value changes whenever AWS publishes a new image. Without ignore_changes,
+  # every unrelated `terraform apply` run after an AMI roll would plan to
+  # replace the bastion — injecting a destroy into the "additions only"
+  # project-add safety gate (see ADDING_A_PROJECT.md), churning the
+  # bastion_instance_id / db_tunnel_command outputs, and risking a dropped
+  # in-flight tunnel on the auto-apply to main. The data source still records
+  # the *desired* image; ignoring `ami` just keeps recreation deliberate. To
+  # roll the bastion onto a newer AMI (and pick up the reboot-only OS fixes),
+  # recreate it explicitly: `terraform apply -replace=aws_instance.bastion`.
+  lifecycle {
+    ignore_changes = [ami]
+  }
 
   tags = {
     Name = "shared-db-bastion"

@@ -41,6 +41,12 @@
   replacement) as 1-change/1-destroy DRIFT unrelated to the PR. ADDING_A_PROJECT.md claims new-
   project plans are "additions only" — reconcile against this bastion noise; flag so an operator
   doesn't inadvertently replace the bastion (new instance id breaks the db_tunnel_command output).
+  - RESOLVED by issue #68 / PR #69 (2026-06): `aws_instance.bastion` now has
+    `lifecycle { ignore_changes = [ami] }`, so the AMI-drift replacement noise is GONE — plans
+    no longer show the bastion replaced on unrelated applies. AMI refresh is now a deliberate
+    `terraform apply -replace=aws_instance.bastion`. If a future PR's plan shows the bastion
+    replaced, that's now a real signal (user_data change or explicit -replace), not drift.
+    ADDING_A_PROJECT.md "additions only" gate is therefore once again literally true.
 
 ### Recurring pattern: config-sync commits ride along in PRs
 - Branches are sometimes cut from the head of a prior bot config-sync PR (e.g. #62),
