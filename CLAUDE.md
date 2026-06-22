@@ -452,6 +452,7 @@ Core principles
 - Default to a `src/` layout for packages (e.g., `src/<package_name>/...`) and keep import paths clean.
 - Keep configuration, documentation, and tooling files at the repo root.
 - Put tests in `tests/` and write tests that are fast, deterministic, and isolated.
+- Do not add tests for non-production repo surfaces. The no-tests rule applies at least to docs, infrastructure, scripts, dev tools, and repo-maintenance-only helpers that exist solely to support these. Check AGENTS.md for any additional repo-specific instructions about files and directories to exclude.
 - Organize code by feature/domain rather than by “layers” unless the project clearly benefits.
   Environment and dependencies
 - Always assume an isolated virtual environment.
