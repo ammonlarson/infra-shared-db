@@ -384,11 +384,29 @@ incoming CI / review / comment event:
   must win, prefer the PR branch being watched. After resolving, report a
   concrete list of the files or conflicts that required manual resolution.
 - Never poll with `sleep` or repeated status checks — events wake the session.
-- Stop watching the moment the user asks; unsubscribe and push no further
-  changes to that PR.
+
+**Monitoring `main` with `CronCreate`.** PR-activity webhooks do **not** deliver
+the events that matter most for keeping a PR current: `main` advancing, CI
+turning green, and merge-conflict transitions are never pushed. So relying on the
+subscription alone leaves the "`main` advanced" case (above) undetected. To cover
+it, schedule a recurring self check-in with the **`CronCreate`** tool when it is
+available (it supersedes the older `send_later` approach, which is not provisioned
+in this environment). Arm it right after subscribing — roughly hourly on an
+off-minute (e.g. cron `37 * * * *`, not `0`/`30`) — with a prompt that re-checks
+the watched PR: fetch and compare the PR branch against `origin/main` and
+rebase/merge per the `main` advanced rule if it moved, re-check CI status and
+mergeability and act on anything actionable, and stop the job (via `CronDelete`)
+once the PR is merged or closed. The job must stay silent when nothing changed —
+no user message, no PR comment. `CronCreate` jobs are session-only and auto-expire
+after 7 days, so re-arm if the PR is still open past that. If `CronCreate` is also
+unavailable, note the skip and fall back to event-driven watching only.
+
+- Stop watching the moment the user asks; unsubscribe, cancel the `CronCreate`
+  job with `CronDelete`, and push no further changes to that PR.
 
 - [ ] Subscribed to PR activity (if supported)
 - [ ] Initial CI status + unresolved review comments checked and addressed
+- [ ] Recurring `CronCreate` self check-in armed to catch `main` advancing / CI green / merge transitions (if supported)
 - [ ] When `main` advances: rebased onto `main` (merged on conflict, preserving both sides' intent, preferring the PR branch on a true either/or conflict) and reported any files needing manual resolution
 
 ---
